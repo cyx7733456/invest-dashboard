@@ -1,21 +1,60 @@
 # -*- coding: utf-8 -*-
-"""五组投资大看板 v1 构建脚本。所有数字均直接读自源文件，不估算。
-数据源（相对 /Users/apple/Desktop/Investment/）：
-  公共/数据/simulated_nav_<组>.csv         五组模拟净值（| 分隔）
-  公共/数据/daily_report_<组>_<日期>.json  每日上报件（持仓/new_picks 用最新一份）
-  投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_<日期>.html  实盘卡三件套
+"""五组投资大看板 v2 构建脚本（每日可重跑自动生成新日期页）。
+
+== 输入文件清单 ==
+1. 公共/数据/simulated_nav_<组>.csv                     五组模拟净值（| 分隔，date/act_nav/n_hold）
+2. 公共/数据/daily_report_<组>_<YYYY-MM-DD>.json        每日上报件（market_view/holdings/new_picks）
+3. 投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_<日期>.{csv,txt,html}
+                                                        实盘卡三件套
+== 日期探测逻辑 ==
+- 实盘卡日期集合 = daily_live_cards/ 下 daily_live_card_<YYYY-MM-DD>.html 的 glob；
+- 每个卡日期 D 的风向标数据取 公共/数据/daily_report_<组>_D.json（缺件 → 该组「未上报」）；
+- 最新日期 = 卡日期集合最大值；首页/入口页摘要卡、历史列表、详情页均由该集合自动生成；
+- 以后每日新卡落盘后重跑本脚本即自动出新日期页并更新入口页/首页。
+
+== 诚实铁律 ==
+- 所有数字直接读源文件；取不到的列/字段一律显示「取不到/未上报」，严禁编造或估算。
+
+== v2 改版（2026-10-27 验收后四需求）==
+R1 live/ 入口页：最新一日摘要卡 + 大按钮 + 历史日期卡列表（不再堆叠多日全文）
+R2 详情页重设计：KPI 条 + 实盘风向标区 + 共识买入表 + 观察票表 + <details> 折叠原文 + 风险脚注
+R3 首页 Top3：来源组徽章 + 参与状态条 + 选取规则注明
+R4 首页新增「实盘风向标」板块（位于当日实盘推荐之前）
 """
-import csv, json, os, html, re, datetime
+import csv, json, os, html, re
 
 ROOT = "/Users/apple/Desktop/Investment"
 OUT = os.path.join(ROOT, "公共/看板设计/dashboard_v1")
 DATA = os.path.join(ROOT, "公共/数据")
 CARDS = os.path.join(ROOT, "投资1组_WB/实盘化方案/daily_live_cards")
 GROUPS = ["WB", "CX", "QD", "DSK", "HRS"]
-BUILD_TS = "2026-10-27 深夜（构建于本地，AI 生成）"
+TODAY = "2026-10-27"
+BUILD_TS = "2026-10-27 深夜（本地构建，AI 生成）"
 
-# ---------- 读取净值 ----------
-navs = {}  # g -> list of (date, act_nav, n_hold)
+# ---------- 日期探测 ----------
+def card_dates():
+    ds = []
+    for f in os.listdir(CARDS):
+        m = re.match(r"daily_live_card_(\d{4}-\d{2}-\d{2})\.html$", f)
+        if m:
+            ds.append(m.group(1))
+    return sorted(ds)
+
+CARD_DATES = card_dates()
+LATEST = CARD_DATES[-1]
+
+def report_path(g, date):
+    return f"{DATA}/daily_report_{g}_{date}.json"
+
+def load_report(g, date):
+    p = report_path(g, date)
+    if not os.path.exists(p):
+        return None
+    with open(p) as f:
+        return json.load(f)
+
+# ---------- 净值 ----------
+navs = {}
 for g in GROUPS:
     rows = []
     with open(f"{DATA}/simulated_nav_{g}.csv", newline="") as f:
@@ -27,109 +66,206 @@ def metrics(g):
     rows = navs[g]
     rets = [rows[i][1] / rows[i-1][1] - 1 for i in range(1, len(rows))]
     win = sum(1 for r in rets if r > 0)
-    cum = rows[-1][1] / rows[0][1] - 1
-    dchg = rows[-1][1] / rows[-2][1] - 1
     return {
         "first": rows[0][0], "last": rows[-1][0], "act": rows[-1][1],
         "n_hold": rows[-1][2], "win": win, "n": len(rets),
-        "winrate": win / len(rets), "cum": cum, "dchg": dchg,
+        "winrate": win / len(rets), "cum": rows[-1][1] / rows[0][1] - 1,
+        "dchg": rows[-1][1] / rows[-2][1] - 1,
     }
 
 M = {g: metrics(g) for g in GROUPS}
 
-# ---------- 最新上报件 ----------
 def latest_report(g):
-    cands = sorted(
-        f for f in os.listdir(DATA)
-        if re.match(rf"daily_report_{g}_\d{{4}}-\d{{2}}-\d{{2}}\.json$", f)
-    )
-    return os.path.join(DATA, cands[-1]), cands[-1]
+    cands = sorted(f for f in os.listdir(DATA)
+                   if re.match(rf"daily_report_{g}_\d{{4}}-\d{{2}}-\d{{2}}\.json$", f))
+    p = os.path.join(DATA, cands[-1])
+    with open(p) as f:
+        return {"path": p, "fname": cands[-1], **json.load(f)}
 
-R = {}
-for g in GROUPS:
-    path, fname = latest_report(g)
-    with open(path) as f:
-        R[g] = {"path": path, "fname": fname, **json.load(f)}
+R = {g: latest_report(g) for g in GROUPS}  # 持仓明细用最新一份
 
-# ---------- 实盘卡 ----------
-def card_dates():
-    ds = []
-    for f in os.listdir(CARDS):
-        m = re.match(r"daily_live_card_(\d{4}-\d{2}-\d{2})\.html$", f)
-        if m:
-            ds.append(m.group(1))
-    return sorted(ds, reverse=True)
+# ---------- 风向标（v2）----------
+def compass(date):
+    """返回 (counts, rows)。无观点 = conf==0（本组自述无观点）；缺件 = 未上报。"""
+    counts = {"看多": 0, "看空": 0, "中性": 0, "无观点": 0, "未上报": 0}
+    rows = []
+    for g in GROUPS:
+        d = load_report(g, date)
+        if d is None:
+            counts["未上报"] += 1
+            rows.append({"g": g, "state": "未上报", "stance": None, "conf": None,
+                         "basis": f"当日上报件不存在（daily_report_{g}_{date}.json 缺件）",
+                         "no_timing": False, "human": None})
+            continue
+        mv = d.get("market_view") or {}
+        conf = mv.get("confidence")
+        stance = mv.get("stance")
+        basis = str(mv.get("basis") or "未上报")
+        no_timing = (conf == 0)
+        state = "无观点" if no_timing else (stance if stance in counts else "中性")
+        counts[state] += 1
+        rows.append({"g": g, "state": state, "stance": stance, "conf": conf,
+                     "basis": basis, "no_timing": no_timing,
+                     "human": mv.get("is_human"), "np": len(d.get("new_picks") or [])})
+    line = "、".join(f"{v} 组{k}" for k, v in counts.items() if v) or "无数据"
+    return counts, rows, sum(counts.values()), line
 
-CARD_DATES = card_dates()
+def compass_html(date):
+    counts, rows, total, _ = compass(date)
+    order = ["看多", "中性", "看空", "无观点", "未上报"]
+    seg_col = {"看多": "var(--up)", "中性": "#6e7681", "看空": "var(--dn)",
+               "无观点": "#30363d",
+               "未上报": "repeating-linear-gradient(45deg,#21262d,#21262d 4px,#161b22 4px,#161b22 8px)"}
+    segs = "".join(
+        f'<div class="cseg" style="width:{counts[k]/total*100:.0f}%;background:{seg_col[k]}" title="{k} {counts[k]} 组">{counts[k] if counts[k] else ""}</div>'
+        for k in order if counts[k])
+    cnt_bits = " · ".join(
+        f'<span class="{"up" if k == "看多" else "dn" if k == "看空" else "warn" if k == "未上报" else "dim"}">{k} {counts[k]} 组</span>'
+        for k in order if counts[k])
+    stag_cls = {"看多": "up", "看空": "dn", "中性": "dim", "无观点": "dim", "未上报": "warn"}
+    grows = ""
+    for r in rows:
+        st = r["state"]
+        conf = r["conf"]
+        conf_bar = (f'<span class="cbar"><i style="width:{min(conf,1)*100:.0f}%"></i></span>'
+                    f'<span class="dim">{conf:.2f}</span>') if isinstance(conf, (int, float)) else '<span class="dim">—</span>'
+        b = html.escape(r["basis"])
+        short = b if len(b) <= 72 else b[:72] + "…"
+        tag_note = ' <span class="dim">（本组无择时模型）</span>' if r["no_timing"] else ""
+        human_note = ' <span class="dim">[人工]</span>' if r.get("human") is True else ""
+        grows += f"""<div class="grow"><span class="gbadge">{r['g']}</span>
+<span class="stag {stag_cls[st]}">{st}{tag_note}{human_note}</span>
+{conf_bar}<span class="gbasis">{short}</span></div>"""
+    return f"""
+<div class="compass">
+  <div class="cbarwrap">{segs}</div>
+  <div class="cln">{cnt_bits}</div>
+  {grows}
+  <div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型；未上报 = 当日上报件缺件。卡面旧汇总把无观点组计入中性，本区按上报件实况区分。</div>
+</div>"""
 
-def card_html(date):
+# ---------- 实盘卡数据 ----------
+def card_rows(date):
+    with open(f"{CARDS}/daily_live_card_{date}.csv", newline="") as f:
+        return list(csv.DictReader(f))
+
+def card_facts(date):
+    txt = open(f"{CARDS}/daily_live_card_{date}.txt").read().splitlines()
+    hdr = [l for l in txt if l.startswith("#")]
+    def grab(pat):
+        for l in hdr:
+            m = re.search(pat, l)
+            if m:
+                return m.group(1).strip()
+        return None
+    return {
+        "gen": grab(r"生成 (.+)$"),
+        "sources": grab(r"信号来源：(.+?) /"),
+        "missing": grab(r"缺失：(.+)"),
+        "n_buy": grab(r"买入推荐：(\d+) 只"),
+        "n_watch": grab(r"观察池：(\d+) 只"),
+        "n_new": grab(r"新增推荐 (\d+) 只"),
+        "risk": grab(r"风险等级：(.+)"),
+    }
+
+def industry_map(date):
+    """code → industry，取自当日各组上报件（picks/holdings/new_picks）；查不到 → 未上报。"""
+    m = {}
+    for g in GROUPS:
+        d = load_report(g, date)
+        if not d:
+            continue
+        for k in ("picks", "holdings", "new_picks"):
+            for x in d.get(k) or []:
+                if x.get("code") and x.get("industry") and x["code"] not in m:
+                    m[x["code"]] = x["industry"]
+    return m
+
+def pick_table(rows, date, kind):
+    im = industry_map(date)
+    sel = [r for r in rows if r["动作"].startswith(kind)]
+    if not rows:
+        return '<div class="dim" style="padding:8px 0">取不到：当日卡 csv 无逐票行（旧口径卡未提供），仅卡面自述口径，见下方原文折叠。</div>'
+    if not sel:
+        return '<div class="dim" style="padding:8px 0">当日无此类条目。</div>'
+    tr = ""
+    for r in sel:
+        ind = im.get(r["代码"])
+        ind_s = html.escape(ind) if ind else '<span class="dim">未上报</span>'
+        tp, sl = r.get("止盈价/锚") or "", r.get("止损价/锚") or ""
+        cons = f" <span class='dim'>共识 {html.escape(r['共识票数'])}/5</span>" if r.get("共识票数") else ""
+        tr += f"""<tr><td>{html.escape(r['代码'])}</td><td>{html.escape(r['名称'])}</td>
+<td>{html.escape(r['动作'].split('（')[0])}</td><td><span class="gbadge">{html.escape(r['组'])}</span>{cons}</td>
+<td>{ind_s}</td><td>{html.escape(r['买入参考价/触发价'])} <span class="dim">({html.escape(r.get('价格口径') or '')})</span></td>
+<td>{sl or '<span class=dim>未上报</span>'}</td><td>{tp or '<span class=dim>未上报</span>'}</td></tr>"""
+    return f"""<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th></tr>{tr}</table>
+<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。</div>"""
+
+def card_html_parts(date):
     with open(f"{CARDS}/daily_live_card_{date}.html") as f:
         src = f.read()
-    styles = "".join(re.findall(r"<style>.*?</style>", src, re.S))
+    styles = "".join(re.findall(r"<style>.*?</style>", src, re.S)).replace("<style>", "").replace("</style>", "")
     body = re.search(r"<body>(.*)</body>", src, re.S).group(1)
     return styles, body
 
-def card_txt_header(date):
-    txt = open(f"{CARDS}/daily_live_card_{date}.txt").read().splitlines()
-    return [l for l in txt if l.startswith("#")][:12]
+# ---------- 通用骨架 ----------
+CSS = """
+:root{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--up:#e5544b;--dn:#3fb950;--acc:#58a6ff;--warn:#d29922}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",monospace}
+a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
+.topnav{display:flex;gap:18px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}
+.topnav a{color:var(--dim);font-size:13px} .topnav a.on{color:var(--tx);font-weight:700;border-bottom:2px solid var(--acc)}
+.wrap{max-width:1080px;margin:0 auto;padding:22px}
+h1{font-size:22px;margin:6px 0 2px} h2{font-size:16px;margin:26px 0 10px;border-left:3px solid var(--acc);padding-left:9px}
+.sub{color:var(--dim);font-size:12px}
+.grid{display:grid;gap:12px} .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g6{grid-template-columns:repeat(3,1fr)} .gk{grid-template-columns:repeat(5,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.card b{font-size:19px} .card .lab{color:var(--dim);font-size:11px;display:block}
+.up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)} .warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:right;white-space:nowrap}
+th{background:#171c26;color:var(--dim);font-weight:600} th:first-child,td:first-child{text-align:left}
+.tag{display:inline-block;background:#1c2432;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:11px;color:var(--dim);margin:2px}
+.entry{display:block;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px;color:var(--tx)}
+.entry:hover{border-color:var(--acc);text-decoration:none}
+.bigbtn{display:inline-block;background:#1f3a5f;border:1px solid var(--acc);border-radius:8px;padding:10px 26px;color:#cfe4ff;font-size:15px;font-weight:700;margin-top:10px}
+.bigbtn:hover{background:#25477a;text-decoration:none}
+footer{color:#5c6575;font-size:11px;text-align:center;padding:22px;border-top:1px solid var(--line);margin-top:34px}
+.btns button{background:#171c26;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 14px;margin-right:8px;cursor:pointer;font-size:13px}
+.btns button.on{border-color:var(--acc);color:var(--acc)}
+.holdsec{display:none} .holdsec.on{display:block}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:12px;background:var(--panel)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+.compass{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.cbarwrap{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.cseg{display:flex;align-items:center;justify-content:center;color:#d7dee8;font-size:12px;min-width:0}
+.cln{margin:8px 0 4px;font-size:13px}
+.grow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed #1c2330;font-size:12.5px}
+.gbadge{display:inline-block;background:#1f2937;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-weight:700;min-width:34px;text-align:center}
+.stag{font-weight:700;min-width:52px}
+.cbar{display:inline-block;width:80px;height:7px;background:#0d1117;border:1px solid var(--line);border-radius:4px;overflow:hidden;vertical-align:middle}
+.cbar i{display:block;height:100%;background:var(--acc)}
+.gbasis{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.status i{font-style:normal;margin:0 2px}
+.riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
+@media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
+"""
 
-# 10-27 共识买入 Top（来自卡 csv：动作=买入（行业共识…）且共识票数≥2）
-top3 = []
-with open(f"{CARDS}/daily_live_card_2026-10-27.csv", newline="") as f:
-    for r in csv.DictReader(f):
-        if r["动作"].startswith("买入"):
-            top3.append(r)
-TOP3 = top3[:3]
-
-# ---------- 通用片段 ----------
-def nav_bar(active):
-    items = [("首页", "../index.html" if active else "index.html"),
-             ("实盘推荐", "live/index.html" if active in (None, "index") else ("../live/index.html" if active != "live" else "index.html")),
-             ("模拟盘赛马", "sim/index.html" if active in (None, "index", "live") else "../sim/index.html"),
-             ("策略档案", "strategies/index.html" if active in (None, "index", "live") else "../strategies/index.html"),
-             ("数据状态", "data-status/index.html" if active in (None, "index", "live") else "../data-status/index.html")]
-    # 统一按页面深度生成：root 页面用根相对，子页用 ../
-    def link(name, path):
-        return f'<a href="{path}"{" class=on" if name == active else ""}>{name}</a>'
-    return '<nav class="topnav">' + "".join(link(n, p) for n, p in
-        [("首页", "../index.html" if active not in (None, "index") else "index.html"),
-         ("实盘推荐", "live/index.html" if active is None else ("index.html" if active == "live" else "../live/index.html")),
-         ("模拟盘赛马", "../sim/index.html" if active not in (None, "index", "live") else "sim/index.html"),
-         ("策略档案", "../strategies/index.html" if active not in (None, "index", "live") else "strategies/index.html"),
-         ("数据状态", "../data-status/index.html" if active not in (None, "index", "live") else "data-status/index.html")]) + "</nav>"
-
-def page(title, body, depth=0, extra_head=""):
+def page(title, body, depth=0):
     pre = "" if depth == 0 else "../"
-    footer = (f'<footer>数据截至：{BUILD_TS} ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>')
+    nav = (
+        f'<a href="{pre}index.html"{" class=on" if title == "首页" else ""}>首页</a>'
+        f'<a href="{pre}live/index.html"{" class=on" if title in ("实盘推荐", "实盘详情") else ""}>实盘推荐</a>'
+        f'<a href="{pre}sim/index.html">模拟盘赛马</a>'
+        f'<a href="{pre}strategies/index.html">策略档案</a>'
+        f'<a href="{pre}data-status/index.html">数据状态</a>')
+    footer = f'<footer>数据截至：{BUILD_TS} ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>'
     return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title} · 五组投资大看板</title>{extra_head}
-<style>
-:root{{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--up:#e5544b;--dn:#3fb950;--acc:#58a6ff;--warn:#d29922}}
-*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--tx);font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",monospace}}
-a{{color:var(--acc);text-decoration:none}} a:hover{{text-decoration:underline}}
-.topnav{{display:flex;gap:18px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}}
-.topnav a{{color:var(--dim);font-size:13px}} .topnav a.on{{color:var(--tx);font-weight:700;border-bottom:2px solid var(--acc)}}
-.wrap{{max-width:1080px;margin:0 auto;padding:22px}}
-h1{{font-size:22px;margin:6px 0 2px}} h2{{font-size:16px;margin:26px 0 10px;border-left:3px solid var(--acc);padding-left:9px}}
-.sub{{color:var(--dim);font-size:12px}}
-.grid{{display:grid;gap:12px}} .g5{{grid-template-columns:repeat(5,1fr)}} .g3{{grid-template-columns:repeat(3,1fr)}} .g6{{grid-template-columns:repeat(3,1fr)}}
-.card{{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}}
-.card b{{font-size:19px}} .card .lab{{color:var(--dim);font-size:11px;display:block}}
-.up{{color:var(--up)}} .dn{{color:var(--dn)}} .dim{{color:var(--dim)}} .warn{{color:var(--warn)}}
-table{{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}}
-th,td{{border:1px solid var(--line);padding:6px 8px;text-align:right;white-space:nowrap}}
-th{{background:#171c26;color:var(--dim);font-weight:600}} th:first-child,td:first-child{{text-align:left}}
-.tag{{display:inline-block;background:#1c2432;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:11px;color:var(--dim);margin:2px}}
-.entry{{display:block;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px;color:var(--tx)}}
-.entry:hover{{border-color:var(--acc);text-decoration:none}}
-footer{{color:#5c6575;font-size:11px;text-align:center;padding:22px;border-top:1px solid var(--line);margin-top:34px}}
-.btns button{{background:#171c26;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 14px;margin-right:8px;cursor:pointer;font-size:13px}}
-.btns button.on{{border-color:var(--acc);color:var(--acc)}}
-.holdsec{{display:none}} .holdsec.on{{display:block}}
-@media(max-width:900px){{.g5,.g3,.g6{{grid-template-columns:repeat(2,1fr)}}}}
-</style></head><body>
-{nav_bar(None if depth == 0 else "sub")}
+<title>{title} · 五组投资大看板</title>
+<style>{CSS}</style></head><body>
+<nav class="topnav">{nav}</nav>
 <div class="wrap">
 {body}
 </div>
@@ -140,102 +276,196 @@ def pct(x, signed=True):
     s = f"{x*100:+.2f}%" if signed else f"{x*100:.2f}%"
     return f'<span class="{"up" if x > 0 else "dn" if x < 0 else "dim"}">{s}</span>'
 
-# ---------- 首页 ----------
-today = "2026-10-27"
+def part_status_html(date):
+    """参与状态条：✅已报new_picks ⚠已报但0只 ❌缺件未上报。"""
+    bits = []
+    for g in GROUPS:
+        d = load_report(g, date)
+        if d is None:
+            bits.append(f'<span class="warn">{g}❌未上报</span>')
+        elif len(d.get("new_picks") or []) == 0:
+            bits.append(f'<span class="warn">{g}⚠当日0只</span>')
+        else:
+            bits.append(f'<span class="up">{g}✅</span>')
+    return '<span class="status">' + " · ".join(bits) + "</span>"
+
+# ================= R4+R3：首页 =================
+counts, crows, total, _ = compass(LATEST)
+buy_cnt = f'{counts["看空"]} 看空 / {counts["中性"]} 中性 / {counts["看多"]} 看多'
+sum_line = (f"五组中 {counts['看空']} 组看空、{counts['中性']} 组中性、{counts['看多']} 组看多"
+            + (f"、{counts['无观点']} 组自述无观点" if counts["无观点"] else "")
+            + (f"、{counts['未上报']} 组当日未上报" if counts["未上报"] else "")
+            + "（客观计数陈述，非主观结论、非投资建议）")
+
+top3 = []
+with open(f"{CARDS}/daily_live_card_{LATEST}.csv", newline="") as f:
+    for r in csv.DictReader(f):
+        if r["动作"].startswith("买入"):
+            top3.append(r)
+TOP3 = top3[:3]
+
+im_latest = industry_map(LATEST)
+top3_html = ""
+for i, r in enumerate(TOP3):
+    ind = im_latest.get(r["代码"])
+    ind_s = html.escape(ind) if ind else '<span class="dim">未上报</span>'
+    top3_html += f"""<div class="card"><span class="lab">{i+1}. {html.escape(r['名称'])}（{r['代码']}）· {ind_s}</span>
+<b class="up">{html.escape(r['动作'].split('（')[0])}</b> <span class="gbadge">{html.escape(r['组'])}</span>
+<span class="dim">共识 {html.escape(r.get('共识票数') or '—')}/5 组</span><br>
+<span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
+<span class="dim">有效期 {r['有效期(天)']} 天 ｜ 意向非成交</span></div>"""
+
 nav_cards = ""
 for g in GROUPS:
     m = M[g]
-    lag = "" if m["last"] == today else f'<span class="warn">数据截至 {m["last"]}</span>'
+    lag = "" if m["last"] == TODAY else f'<span class="warn">数据截至 {m["last"]}</span>'
     nav_cards += f"""<div class="card"><span class="lab">{g} 组 · 模拟净值</span>
 <b>{m['act']:.4f}</b><br>{pct(m['dchg'])} <span class="dim">当日</span><br>
 <span class="dim">累计 {m['cum']*100:+.1f}% ｜ 持仓 {m['n_hold']} 只</span><br>{lag}</div>"""
 
-top3_html = "".join(
-    f"""<div class="card"><span class="lab">{i+1}. {html.escape(r['名称'])}（{r['代码']}）· 共识 {r['共识票数']}/5 组</span>
-<b class="up">{html.escape(r['动作'].split('（')[0])}</b><br>
-<span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
-<span class="dim">来源组 {r['组']} ｜ 有效期 {r['有效期(天)']} 天 ｜ 意向非成交</span></div>"""
-    for i, r in enumerate(TOP3))
-
 entries = [
-    ("实盘推荐专区", "live/index.html", "每日实盘推荐卡：行业共识买入 + 观察池，历史可翻"),
+    ("实盘推荐专区", "live/index.html", "每日实盘推荐卡：最新摘要 + 历史日期导航"),
     ("模拟盘赛马", "sim/index.html", "五组净值对比曲线、日胜率与当前持仓明细"),
     ("策略档案", "strategies/index.html", "五组策略卡片墙（版本待契约回填）"),
     ("数据状态", "data-status/index.html", "六项数据源红黄绿灯 + 已知缺日"),
-    ("最新实盘卡 10-27", "live/2026-10-27.html", "共识买入 7 只 / 观察池 13 只"),
+    (f"最新实盘卡 {LATEST[5:]}", f"live/{LATEST}.html", "共识买入表 / 观察票表 / 风向标"),
     ("上一实盘卡 10-26", "live/2026-10-26.html", "共识买入 36 只 / 观察池 4 只"),
 ]
-entry_html = "".join(f'<a class="entry" href="{p}"><span class="lab">{t}</span><b>{t}</b><br><span class="dim">{d}</span></a>'.replace(
-    f'<span class="lab">{t}</span><b>{t}</b>', f'<b>{t}</b>') for t, p, d in entries)
+entry_html = "".join(f'<a class="entry" href="{p}"><b>{t}</b><br><span class="dim">{d}</span></a>' for t, p, d in entries)
+
+seg_style = {"看多": "var(--up)", "看空": "var(--dn)", "中性": "#6e7681", "无观点": "#30363d", "未上报": "#21262d"}
+home_segs = "".join(f'<div class="cseg" style="width:{c/5*100:.0f}%;background:{seg_style[k]}" title="{k} {c} 组">{c if c else ""}</div>'
+                    for k, c in counts.items() if c)
+home_rows = "".join(
+    f'<div class="grow"><span class="gbadge">{r["g"]}</span>'
+    f'<span class="stag {"up" if r["state"]=="看多" else "dn" if r["state"]=="看空" else "dim"}{" warn" if r["state"]=="未上报" else ""}">{r["state"]}</span>'
+    f'<span class="dim">conf {r["conf"] if r["conf"] is not None else "—"}</span>'
+    f'<span class="gbasis">{html.escape(str(r["basis"])[:80])}{"…" if len(str(r["basis"]))>80 else ""}</span></div>'
+    for r in crows)
 
 body = f"""
 <h1>五组投资大看板</h1>
-<div class="sub">今日 {today} ｜ 投资一组（WB）承建 ｜ 模拟净值起点 2026-09-03/04，全部数字可溯源至公共数据集与每日上报件</div>
+<div class="sub">今日 {TODAY} ｜ 投资一组（WB）承建 ｜ 模拟净值起点 2026-09-03/04，全部数字可溯源至公共数据集与每日上报件</div>
 <h2>五组模拟净值总览</h2>
 <div class="grid g5">{nav_cards}</div>
 <div class="sub" style="margin-top:6px">日胜率口径：act_nav 日收益&gt;0 的交易日 ÷ 总交易日；详见模拟盘赛马页</div>
-<h2>当日实盘推荐 Top3（2026-10-27 卡 · 行业共识 ≥2 组）</h2>
+<h2>实盘风向标（{LATEST}）</h2>
+<div class="compass">
+  <div class="cbarwrap">{home_segs}</div>
+  <div class="cln"><span class="dn">看空 {counts["看空"]} 组</span> · <span class="dim">中性 {counts["中性"]} 组</span> · <span class="up">看多 {counts["看多"]} 组</span> · <span class="dim">无观点 {counts["无观点"]} 组</span> · <span class="warn">未上报 {counts["未上报"]} 组</span></div>
+  {home_rows}
+  <div class="sub" style="margin-top:6px">{sum_line}</div>
+</div>
+<div style="margin-top:8px"><a class="bigbtn" href="live/{LATEST}.html#compass">查看详情（当日风向标区）</a></div>
+<h2>当日实盘推荐 Top3（{LATEST} 卡 · 行业共识 ≥2 组判据）</h2>
+{part_status_html(LATEST)}
+<div class="sub" style="margin:4px 0 10px">Top3 选取规则：取当日卡 csv 中「买入（行业共识≥2 组）」档前 3 条，按卡面原序，未加工。</div>
 <div class="grid g3">{top3_html}</div>
-<div class="sub" style="margin-top:6px">全部为 AI 意向、未成交；完整卡见 <a href="live/2026-10-27.html">实盘专区</a></div>
+<div class="sub" style="margin-top:6px">来源组徽章为卡面记录的单票来源组；共识票数含同行业他组候选。全部为 AI 意向、未成交；完整卡见 <a href="live/{LATEST}.html">实盘专区</a></div>
 <h2>板块入口</h2>
 <div class="grid g6">{entry_html}</div>
 """
 open(f"{OUT}/index.html", "w").write(page("首页", body, depth=0))
 
-# ---------- live/index.html ----------
-items = []
-for d in CARD_DATES:
-    hdr = card_txt_header(d)
-    def grab(pat):
-        for l in hdr:
-            m = re.search(pat, l)
-            return m.group(1) if m else "未标注"
-        return "未标注"
-    nb = grab(r"买入推荐：(\d+) 只")
-    watch = grab(r"观察池：(\d+) 只")
-    miss = grab(r"缺失：(.+)")
-    items.append(f"""<a class="entry" href="{d}.html"><b>{d} 实盘卡</b><br>
-<span class="dim">共识买入 {nb} 只 ｜ 观察池 {watch} 只 ｜ 缺失组：{miss}</span><br>
-<span class="dim">来源：daily_live_card_{d}.html/.csv/.txt（照原文呈现，不加工）</span></a>""")
+# ================= R1：live/ 入口页 =================
+def date_summary(d):
+    facts = card_facts(d)
+    if facts["n_buy"]:
+        cnt = f'共识买入 {facts["n_buy"]} 只 ｜ 观察 {facts["n_watch"]} 只'
+    else:
+        cnt = f'卡面自述新增推荐 {facts["n_new"]} 只（旧口径，无逐票 csv）'
+    _, drows, _, _ = compass(d)
+    wind = " · ".join(f'{k} {sum(1 for r in drows if r["state"]==k)}'
+                      for k in ("看空", "中性", "看多"))
+    return cnt, wind, facts
+
+hist_cards = ""
+for d in reversed(CARD_DATES):
+    cnt, wind, _ = date_summary(d)
+    hist_cards += f"""<a class="entry" href="{d}.html"><b>{d}</b><br>
+<span class="dim">{cnt}</span><br><span class="dim">风向：看空 {wind.split(" · ")[0].split()[-1]} / 中性 {wind.split(" · ")[1].split()[-1]} / 看多 {wind.split(" · ")[2].split()[-1]}</span></a>"""
+
+lf = card_facts(LATEST)
 body = f"""
 <h1>实盘推荐专区</h1>
-<div class="sub">按日期倒序；卡片口径：买入档 = 行业共识 ind_n≥2；价格列可能为「本组未设」（QD 无日内价源）</div>
-<div class="grid" style="grid-template-columns:1fr;margin-top:14px">{''.join(items)}</div>
+<div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；价格列可能为「本组未设」（QD 无日内价源）</div>
+<div class="card" style="margin-top:14px">
+  <span class="lab">最新一日 · {LATEST}（生成 {lf['gen'] or '未上报'}）</span>
+  <b style="font-size:24px">共识买入 {lf['n_buy']} 只</b> <span class="dim">｜ 观察 {lf['n_watch']} 只</span><br>
+  <span class="dim">信号来源 {lf['sources']} ｜ 缺失 {lf['missing']}</span><br>
+  <span class="dim">风险等级：{lf['risk']}</span><br>
+  {part_status_html(LATEST)}
+  <br><a class="bigbtn" href="{LATEST}.html">查看当日详情 →</a>
+</div>
+<h2>历史日期</h2>
+<div class="grid g3">{hist_cards}</div>
 """
 open(f"{OUT}/live/index.html", "w").write(page("实盘推荐", body, depth=1))
 
-# ---------- live/<date>.html ----------
+# ================= R2：详情页 =================
 for d in CARD_DATES:
-    styles, cbody = card_html(d)
-    body = f"""<div class="card" style="border:1px solid var(--line)"><span class="dim">来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_{d}.html（照原文嵌入，未加工）｜ <a href="index.html">← 返回实盘列表</a></span></div>
-{cbody}
-<style>{styles.replace('<style>', '').replace('</style>', '')}</style>
-"""
-    open(f"{OUT}/live/{d}.html", "w").write(
-        f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>实盘卡 {d} · 五组投资大看板</title>
-<style>
-:root{{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--acc:#58a6ff}}
-*{{box-sizing:border-box}} body{{margin:0;background:#0d1117;color:#e6edf3;font-family:-apple-system,"PingFang SC",sans-serif;line-height:1.6}}
-a{{color:#58a6ff;text-decoration:none}}
-.topnav{{display:flex;gap:18px;padding:12px 22px;background:#12161f;border-bottom:1px solid #232a36}}
-.topnav a{{color:#8a93a3;font-size:13px}}
-</style></head><body>
-<div class="topnav"><a href="../index.html">首页</a><a href="index.html">实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></div>
-<div style="max-width:1000px;margin:0 auto;padding:24px">
-<div class="card" style="margin-bottom:16px"><span style="color:#8a93a3;font-size:12px">来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_{d}.html（照原文嵌入，未加工）｜ <a href="index.html">← 返回实盘列表</a></span></div>
-{cbody}
-</div></body></html>""")
+    card_r = card_rows(d)
+    facts = card_facts(d)
+    styles, cbody = card_html_parts(d)
+    _, drows, _, _ = compass(d)
+    if facts["n_buy"]:
+        kpi_buy = f'<div><label>✅ 共识买入（≥2 组）</label><b>{facts["n_buy"]}</b><small>本卡唯一推荐口径</small></div>'
+        kpi_watch = f'<div><label>👁 观察池</label><b>{facts["n_watch"]}</b><small>非推荐，仅跟踪</small></div>'
+    else:
+        kpi_buy = '<div><label>✅ 共识买入</label><b class="dim">取不到</b><small>当日卡 csv 无逐票行</small></div>'
+        kpi_watch = f'<div><label>卡面自述新增推荐</label><b>{facts["n_new"]}</b><small>旧口径，非共识口径</small></div>'
+    n_report = sum(1 for g in GROUPS if os.path.exists(report_path(g, d)))
+    dcounts, drows, _, _ = compass(d)
+    d_buy_cnt = f'{dcounts["看空"]} 看空 / {dcounts["中性"]} 中性 / {dcounts["看多"]} 看多'
+    buy_tbl = pick_table(card_r, d, "买入")
+    watch_tbl = pick_table(card_r, d, "观察")
+    detail_rows = "".join(
+        f'<div class="grow"><span class="gbadge">{r["g"]}</span>'
+        f'<span class="gbasis" style="white-space:normal">{html.escape(str(r["basis"]))}</span></div>'
+        for r in drows)
+    orig_hdr = html.escape("\n".join(
+        l for l in open(f"{CARDS}/daily_live_card_{d}.txt").read().splitlines() if l.startswith("#")))
+    body = f"""
+<h1>每日实盘推荐卡 · {d}</h1>
+<div class="sub">生成 {facts['gen'] or '未上报'} ｜ 来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_{d}.{{csv,txt,html}} ｜ <a href="index.html">← 返回实盘列表</a></div>
+<div class="grid gk" style="margin-top:12px">
+  {kpi_buy}
+  {kpi_watch}
+  <div><label>📥 参与组</label><b>{n_report}/5</b><small>{facts['sources'] or ''}{' ｜ 缺失 ' + facts['missing'] if facts['missing'] and facts['missing'] != '无' else ''}</small></div>
+  <div><label>🧭 当日风向</label><b style="font-size:14px">{d_buy_cnt.replace(' / ', '<br>')}</b><small>按各组上报件实况统计</small></div>
+  <div><label>风险等级</label><b style="font-size:14px">{facts['risk'] or '未上报'}</b><small>卡面自述</small></div>
+</div>
 
-# ---------- sim/index.html ----------
+<h2 id="compass">实盘风向标</h2>
+{compass_html(d)}
+
+<h2>共识买入（行业共识 ≥2 组 · 意向非成交）</h2>
+{buy_tbl}
+
+<h2>观察票（未达共识门槛 · 非推荐）</h2>
+{watch_tbl}
+
+<details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
+{detail_rows}
+<hr style="border:0;border-top:1px dashed #1c2330">
+<pre style="white-space:pre-wrap;color:var(--dim);font-size:12px">{orig_hdr}</pre>
+<div>{cbody}</div>
+</details>
+
+<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损为机械参考位，跳空/跌停情形条件单可能不成交。</div>
+"""
+    out = page("实盘详情", body, depth=1)
+    # 卡片自带样式插到站内主样式之前，站内骨架样式优先
+    out = out.replace("<style>" + CSS, f"<style>{styles}\n{CSS}")
+    open(f"{OUT}/live/{d}.html", "w").write(out)
+
+# ================= sim / strategies / data-status（沿用 v1 逻辑） =================
 chart_data = {g: [[r[0], r[1]] for r in navs[g]] for g in GROUPS}
-last_dates = {g: M[g]["last"] for g in GROUPS}
 
 rows = ""
 for g in GROUPS:
     m = M[g]
-    lag = "" if m["last"] == today else f' <span class="warn">（最后更新 {m["last"]}）</span>'
+    lag = "" if m["last"] == TODAY else f' <span class="warn">（最后更新 {m["last"]}）</span>'
     rows += f"""<tr><td>{g}</td><td>{m['act']:.4f}{lag}</td><td>{pct(m['dchg'])}</td><td>{pct(m['cum'])}</td>
 <td>{m['winrate']*100:.1f}% <span class="dim">（{m['win']}/{m['n']} 日）</span></td><td>{m['n_hold']}</td><td class="dim">{m['first']} → {m['last']}</td></tr>"""
 
@@ -322,7 +552,6 @@ new Chart(document.getElementById('navchart'), {{
 """
 open(f"{OUT}/sim/index.html", "w").write(page("模拟盘赛马", body, depth=1))
 
-# ---------- strategies/index.html ----------
 STRAT = {
  "WB": ("V9 月度调仓：反转 + 质量分打分，V6 现金滤镜；持仓 25 只，gate_id=V9，tier=满仓；止盈 +15% / 止损 −10%（自今日收盘价起算）。",
         "C8 择时闸门为空壳（v9_live_signal_scan.py 仅注释占位）——如实转自 WB 2026-10-27 上报件 data_gaps。"),
@@ -348,7 +577,6 @@ body = f"""
 """
 open(f"{OUT}/strategies/index.html", "w").write(page("策略档案", body, depth=1))
 
-# ---------- data-status/index.html ----------
 STATUS = [
  ("green", "canon 主K线（QD hfq）", "公共/数据/kline_25y_QD_hfq.csv",
   "实测末行 date=2026-10-27，总数据行 16,230,290（wc -l 16,230,291 含表头），mtime 2026-10-27 19:05。日更正常。"),
@@ -363,8 +591,8 @@ STATUS = [
 ]
 lights = {"green": ("绿灯", "up"), "yellow": ("黄灯", "warn"), "grey": ("灰灯", "dim")}
 srows = "".join(
-    f"""<tr><td><span class="{c}">●</span> {lights[s][0]}</td><td>{t}</td><td class="dim">{p}</td><td style="white-space:normal">{d}</td></tr>"""
-    for s, t, p, d in [(s, t, p, d) for (s, t, p, d) in STATUS] for c in [lights[s][1]])
+    f"""<tr><td><span class="{lights[s][1]}">●</span> {lights[s][0]}</td><td>{t}</td><td class="dim">{p}</td><td style="white-space:normal">{d}</td></tr>"""
+    for s, t, p, d in STATUS)
 body = f"""
 <h1>数据状态</h1>
 <div class="sub">逐项实测于 2026-10-27 深夜；实测依据（文件路径 + 末行/行数 + mtime）见 build_report.md</div>
@@ -375,4 +603,4 @@ body = f"""
 """
 open(f"{OUT}/data-status/index.html", "w").write(page("数据状态", body, depth=1))
 
-print("pages done:", CARD_DATES, "| nav last:", {g: M[g]["last"] for g in GROUPS})
+print("v2 build done | cards:", CARD_DATES, "| latest:", LATEST)

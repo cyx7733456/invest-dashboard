@@ -1,17 +1,218 @@
 <!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>实盘卡 2026-10-27 · 五组投资大看板</title>
+<title>实盘详情 · 五组投资大看板</title>
 <style>
-:root{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--acc:#58a6ff}
-*{box-sizing:border-box} body{margin:0;background:#0d1117;color:#e6edf3;font-family:-apple-system,"PingFang SC",sans-serif;line-height:1.6}
-a{color:#58a6ff;text-decoration:none}
-.topnav{display:flex;gap:18px;padding:12px 22px;background:#12161f;border-bottom:1px solid #232a36}
-.topnav a{color:#8a93a3;font-size:13px}
-</style></head><body>
-<div class="topnav"><a href="../index.html">首页</a><a href="index.html">实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></div>
-<div style="max-width:1000px;margin:0 auto;padding:24px">
-<div class="card" style="margin-bottom:16px"><span style="color:#8a93a3;font-size:12px">来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_2026-10-27.html（照原文嵌入，未加工）｜ <a href="index.html">← 返回实盘列表</a></span></div>
+body{background:#0d1117;color:#e6edf3;font-family:-apple-system,"PingFang SC",sans-serif;
+ max-width:1000px;margin:0 auto;padding:24px;line-height:1.6}
+h1{font-size:22px;margin:0 0 4px} .sub{color:#8b949e;font-size:13px;margin-bottom:20px}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi div{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px}
+.kpi label{display:block;color:#8b949e;font-size:12px} .kpi b{font-size:17px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:14px}
+.card.buy{border-left:4px solid #f85149} .card.watch{border-left:4px solid #d29922}
+.ch{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.code{font-weight:700;font-size:16px} .nm{color:#8b949e}
+.badge{background:#1f6feb;color:#fff;border-radius:10px;padding:2px 9px;font-size:12px}
+.tag{background:#30363d;border-radius:4px;padding:2px 8px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.grid div{background:#0d1117;border-radius:6px;padding:9px}
+.grid label{display:block;color:#8b949e;font-size:11px} .grid b{font-size:15px}
+.grid small{color:#6e7681;font-size:11px;display:block}
+.red{color:#f85149} .grn{color:#3fb950}
+.r1{color:#3fb950} .r2{color:#d29922} .r3{color:#f0883e} .r4{color:#f85149} .r5{color:#ff7b72}
+.meta{color:#8b949e;font-size:12px;margin-top:8px}
+.empty{background:#161b22;border:1px solid #d29922;border-radius:10px;padding:20px;color:#d29922}
+ul{margin:8px 0 0 18px;padding:0} li{font-size:13px;margin-bottom:4px}
+.warn{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;
+ color:#8b949e;font-size:12px;margin-top:20px}
 
+
+:root{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--up:#e5544b;--dn:#3fb950;--acc:#58a6ff;--warn:#d29922}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",monospace}
+a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
+.topnav{display:flex;gap:18px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}
+.topnav a{color:var(--dim);font-size:13px} .topnav a.on{color:var(--tx);font-weight:700;border-bottom:2px solid var(--acc)}
+.wrap{max-width:1080px;margin:0 auto;padding:22px}
+h1{font-size:22px;margin:6px 0 2px} h2{font-size:16px;margin:26px 0 10px;border-left:3px solid var(--acc);padding-left:9px}
+.sub{color:var(--dim);font-size:12px}
+.grid{display:grid;gap:12px} .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g6{grid-template-columns:repeat(3,1fr)} .gk{grid-template-columns:repeat(5,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.card b{font-size:19px} .card .lab{color:var(--dim);font-size:11px;display:block}
+.up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)} .warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:right;white-space:nowrap}
+th{background:#171c26;color:var(--dim);font-weight:600} th:first-child,td:first-child{text-align:left}
+.tag{display:inline-block;background:#1c2432;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:11px;color:var(--dim);margin:2px}
+.entry{display:block;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px;color:var(--tx)}
+.entry:hover{border-color:var(--acc);text-decoration:none}
+.bigbtn{display:inline-block;background:#1f3a5f;border:1px solid var(--acc);border-radius:8px;padding:10px 26px;color:#cfe4ff;font-size:15px;font-weight:700;margin-top:10px}
+.bigbtn:hover{background:#25477a;text-decoration:none}
+footer{color:#5c6575;font-size:11px;text-align:center;padding:22px;border-top:1px solid var(--line);margin-top:34px}
+.btns button{background:#171c26;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 14px;margin-right:8px;cursor:pointer;font-size:13px}
+.btns button.on{border-color:var(--acc);color:var(--acc)}
+.holdsec{display:none} .holdsec.on{display:block}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:12px;background:var(--panel)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+.compass{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.cbarwrap{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.cseg{display:flex;align-items:center;justify-content:center;color:#d7dee8;font-size:12px;min-width:0}
+.cln{margin:8px 0 4px;font-size:13px}
+.grow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed #1c2330;font-size:12.5px}
+.gbadge{display:inline-block;background:#1f2937;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-weight:700;min-width:34px;text-align:center}
+.stag{font-weight:700;min-width:52px}
+.cbar{display:inline-block;width:80px;height:7px;background:#0d1117;border:1px solid var(--line);border-radius:4px;overflow:hidden;vertical-align:middle}
+.cbar i{display:block;height:100%;background:var(--acc)}
+.gbasis{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.status i{font-style:normal;margin:0 2px}
+.riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
+@media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
+</style></head><body>
+<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html" class=on>实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
+<div class="wrap">
+
+<h1>每日实盘推荐卡 · 2026-10-27</h1>
+<div class="sub">生成 2026-10-27T19:30:01 ｜ 来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_2026-10-27.{csv,txt,html} ｜ <a href="index.html">← 返回实盘列表</a></div>
+<div class="grid gk" style="margin-top:12px">
+  <div><label>✅ 共识买入（≥2 组）</label><b>7</b><small>本卡唯一推荐口径</small></div>
+  <div><label>👁 观察池</label><b>13</b><small>非推荐，仅跟踪</small></div>
+  <div><label>📥 参与组</label><b>4/5</b><small>CX,DSK,WB ｜ 缺失 QD,HRS</small></div>
+  <div><label>🧭 当日风向</label><b style="font-size:14px">2 看空<br>1 中性<br>0 看多</b><small>按各组上报件实况统计</small></div>
+  <div><label>风险等级</label><b style="font-size:14px">R3 · 中等风险·市场偏空需谨慎</b><small>卡面自述</small></div>
+</div>
+
+<h2 id="compass">实盘风向标</h2>
+
+<div class="compass">
+  <div class="cbarwrap"><div class="cseg" style="width:20%;background:#6e7681" title="中性 1 组">1</div><div class="cseg" style="width:40%;background:var(--dn)" title="看空 2 组">2</div><div class="cseg" style="width:20%;background:#30363d" title="无观点 1 组">1</div><div class="cseg" style="width:20%;background:repeating-linear-gradient(45deg,#21262d,#21262d 4px,#161b22 4px,#161b22 8px)" title="未上报 1 组">1</div></div>
+  <div class="cln"><span class="dim">中性 1 组</span> · <span class="dn">看空 2 组</span> · <span class="dim">无观点 1 组</span> · <span class="warn">未上报 1 组</span></div>
+  <div class="grow"><span class="gbadge">WB</span>
+<span class="stag dn">看空</span>
+<span class="cbar"><i style="width:60%"></i></span><span class="dim">0.60</span><span class="gbasis">市场广度：站上MA20 14.8% / 当日上涨占比 11.0%（样本 5169 只）</span></div><div class="grow"><span class="gbadge">CX</span>
+<span class="stag dim">中性</span>
+<span class="cbar"><i style="width:55%"></i></span><span class="dim">0.55</span><span class="gbasis">本组 regime=震荡市、risk=34.65、暴露 E=0.50；全池 r60/r20 与宽度 21 日平滑，样本 4986 只</span></div><div class="grow"><span class="gbadge">QD</span>
+<span class="stag warn">未上报</span>
+<span class="dim">—</span><span class="gbasis">当日上报件不存在（daily_report_QD_2026-10-27.json 缺件）</span></div><div class="grow"><span class="gbadge">DSK</span>
+<span class="stag dim">无观点 <span class="dim">（本组无择时模型）</span></span>
+<span class="cbar"><i style="width:0%"></i></span><span class="dim">0.00</span><span class="gbasis">本组为机械 R3 等权持有，无择时模型；此字段为占位，confidence=0 即无观点（15 只持仓，非市场判断）</span></div><div class="grow"><span class="gbadge">HRS</span>
+<span class="stag dn">看空</span>
+<span class="cbar"><i style="width:80%"></i></span><span class="dim">0.80</span><span class="gbasis">20日中位收益 -11.10%(n=2000)，站上MA20 15%；阈值±3% 机械判定</span></div>
+  <div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型；未上报 = 当日上报件缺件。卡面旧汇总把无观点组计入中性，本区按上报件实况区分。</div>
+</div>
+
+<h2>共识买入（行业共识 ≥2 组 · 意向非成交）</h2>
+<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th></tr><tr><td>sh688360</td><td>德马科技</td>
+<td>买入</td><td><span class="gbadge">WB</span> <span class='dim'>共识 2/5</span></td>
+<td>机械设备</td><td>58.335 <span class="dim">(hfq)</span></td>
+<td>52.501</td><td>67.085</td></tr><tr><td>sz002472</td><td>双环传动</td>
+<td>买入</td><td><span class="gbadge">WB</span> <span class='dim'>共识 2/5</span></td>
+<td>汽车</td><td>202.504 <span class="dim">(hfq)</span></td>
+<td>182.254</td><td>232.880</td></tr><tr><td>sh600887</td><td>伊利股份</td>
+<td>买入</td><td><span class="gbadge">WB</span> <span class='dim'>共识 2/5</span></td>
+<td>食品饮料</td><td>2462.787 <span class="dim">(hfq)</span></td>
+<td>2216.508</td><td>2832.205</td></tr><tr><td>sz002877</td><td>智能自控</td>
+<td>买入</td><td><span class="gbadge">CX</span> <span class='dim'>共识 2/5</span></td>
+<td>机械设备</td><td>7.710 <span class="dim">(qfq)</span></td>
+<td>6.940</td><td>9.250</td></tr><tr><td>sh600419</td><td>天润乳业</td>
+<td>买入</td><td><span class="gbadge">CX</span> <span class='dim'>共识 2/5</span></td>
+<td>食品饮料</td><td>8.880 <span class="dim">(qfq)</span></td>
+<td>7.990</td><td>10.660</td></tr><tr><td>sz002960</td><td>青鸟智控</td>
+<td>买入</td><td><span class="gbadge">CX</span> <span class='dim'>共识 2/5</span></td>
+<td>机械设备</td><td>8.560 <span class="dim">(qfq)</span></td>
+<td>7.700</td><td>10.270</td></tr><tr><td>sz002434</td><td>万里扬</td>
+<td>买入</td><td><span class="gbadge">CX</span> <span class='dim'>共识 2/5</span></td>
+<td>汽车</td><td>6.390 <span class="dim">(qfq)</span></td>
+<td>5.750</td><td>7.670</td></tr></table>
+<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。</div>
+
+<h2>观察票（未达共识门槛 · 非推荐）</h2>
+<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th></tr><tr><td>sh605488</td><td>福莱新材</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>基础化工</td><td>93.403 <span class="dim">(hfq)</span></td>
+<td>84.062</td><td>107.413</td></tr><tr><td>sz002696</td><td>百洋股份</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>农林牧渔</td><td>40.976 <span class="dim">(hfq)</span></td>
+<td>36.878</td><td>47.122</td></tr><tr><td>sh600785</td><td>新华百货</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>商贸零售</td><td>96.466 <span class="dim">(hfq)</span></td>
+<td>86.819</td><td>110.936</td></tr><tr><td>sz002376</td><td>新北洋</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>计算机</td><td>44.890 <span class="dim">(hfq)</span></td>
+<td>40.401</td><td>51.624</td></tr><tr><td>sz300115</td><td>长盈精密</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>电子</td><td>338.996 <span class="dim">(hfq)</span></td>
+<td>305.096</td><td>389.845</td></tr><tr><td>sh688772</td><td>珠海冠宇</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>电力设备</td><td>16.147 <span class="dim">(hfq)</span></td>
+<td>14.532</td><td>18.569</td></tr><tr><td>sz300432</td><td>富临精工</td>
+<td>观察</td><td><span class="gbadge">WB</span> <span class='dim'>共识 1/5</span></td>
+<td>电力设备</td><td>160.466 <span class="dim">(hfq)</span></td>
+<td>144.420</td><td>184.536</td></tr><tr><td>sh601077</td><td>渝农商行</td>
+<td>观察</td><td><span class="gbadge">CX</span> <span class='dim'>共识 1/5</span></td>
+<td>银行</td><td>7.250 <span class="dim">(qfq)</span></td>
+<td>6.530</td><td>8.700</td></tr><tr><td>sz300406</td><td>九强生物</td>
+<td>观察</td><td><span class="gbadge">CX</span> <span class='dim'>共识 1/5</span></td>
+<td>医药生物</td><td>12.520 <span class="dim">(qfq)</span></td>
+<td>11.270</td><td>15.020</td></tr><tr><td>sh603126</td><td>中材节能</td>
+<td>观察</td><td><span class="gbadge">CX</span> <span class='dim'>共识 1/5</span></td>
+<td>环保</td><td>6.510 <span class="dim">(qfq)</span></td>
+<td>5.860</td><td>7.810</td></tr><tr><td>sh603939</td><td>益丰药房</td>
+<td>观察</td><td><span class="gbadge">CX</span> <span class='dim'>共识 1/5</span></td>
+<td>医药生物</td><td>25.570 <span class="dim">(qfq)</span></td>
+<td>23.010</td><td>30.680</td></tr><tr><td>sh601728</td><td>中国电信</td>
+<td>观察</td><td><span class="gbadge">CX</span> <span class='dim'>共识 1/5</span></td>
+<td>通信</td><td>6.950 <span class="dim">(qfq)</span></td>
+<td>6.250</td><td>8.340</td></tr><tr><td>sz002966</td><td>苏州银行</td>
+<td>观察</td><td><span class="gbadge">CX</span> <span class='dim'>共识 1/5</span></td>
+<td>银行</td><td>9.480 <span class="dim">(qfq)</span></td>
+<td>8.530</td><td>11.380</td></tr></table>
+<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。</div>
+
+<details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
+<div class="grow"><span class="gbadge">WB</span><span class="gbasis" style="white-space:normal">市场广度：站上MA20 14.8% / 当日上涨占比 11.0%（样本 5169 只）</span></div><div class="grow"><span class="gbadge">CX</span><span class="gbasis" style="white-space:normal">本组 regime=震荡市、risk=34.65、暴露 E=0.50；全池 r60/r20 与宽度 21 日平滑，样本 4986 只</span></div><div class="grow"><span class="gbadge">QD</span><span class="gbasis" style="white-space:normal">当日上报件不存在（daily_report_QD_2026-10-27.json 缺件）</span></div><div class="grow"><span class="gbadge">DSK</span><span class="gbasis" style="white-space:normal">本组为机械 R3 等权持有，无择时模型；此字段为占位，confidence=0 即无观点（15 只持仓，非市场判断）</span></div><div class="grow"><span class="gbadge">HRS</span><span class="gbasis" style="white-space:normal">20日中位收益 -11.10%(n=2000)，站上MA20 15%；阈值±3% 机械判定</span></div>
+<hr style="border:0;border-top:1px dashed #1c2330">
+<pre style="white-space:pre-wrap;color:var(--dim);font-size:12px"># 每日实盘推荐卡（2026-10-27）· 生成 2026-10-27T19:30:01
+# 账户总额 30000 元 | 计划投入合计 0.00 | 组合最大亏损 0.00（0.00%）
+# 今日信号来源：CX,DSK,WB / 缺失：QD,HRS
+# 成本口径：实盘按真实费率（万2.5含最低5元 + 卖出印花税0.05%，ETF无印花税）
+# 仓位闸门：CX QF-1.2（WB 的 C8 为空壳，不参与）
+# ⚠️ 本卡由 AI 生成，非投资建议；是否录入由用户自行决定
+# ✅ 达行业共识的买入推荐：7 只（需 ≥2 组选中同行业，2026-10-27 起本卡唯一『推荐』口径）
+# 👁 观察池：13 只（未达行业共识门槛，**不是推荐**，仅作跟踪候选）
+# 📥 各组提交候选票合计 20 条 → 去重后 20 只 ｜ 现有持仓展示 45 只（来源=picks，非推荐，不计共识票）
+# ── 市场研判（汇总 3 组 market_view，原样罗列不平均）──
+# 看多 0 组 / 看空 1 组 / 中性 2 组 / 未知 0 组
+#   · WB: 看空｜置信度=0.6｜is_human=False
+#   · CX: 中性｜置信度=0.55｜is_human=False（含 CX QF-1.2 regime 闸门信号）
+#   · DSK: 中性｜置信度=0.0｜is_human=False
+# 热点板块（共识票行业分布 Top5）：机械设备(3)、电力设备(2)、汽车(2)、食品饮料(2)、银行(2)
+# 风险等级：R3 · 中等风险·市场偏空需谨慎
+# 仓位建议：本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 CX QF-1.2 闸门提供
+# ── 周/月回顾（canon hfq 区间涨跌，含除权跳变可能失真）──
+#   · sh688360 德马科技：近5日 10.50% ／ 近21日 28.79%
+#   · sz002472 双环传动：近5日 8.20% ／ 近21日 9.06%
+#   · sh600887 伊利股份：近5日 3.92% ／ 近21日 5.82%
+#   · sz002877 智能自控：近5日 1.31% ／ 近21日 3.35%
+#   · sh600419 天润乳业：近5日 5.97% ／ 近21日 -0.67%
+#   · sz002960 青鸟智控：近5日 3.88% ／ 近21日 -1.13%
+#   · sz002434 万里扬：近5日 6.68% ／ 近21日 3.57%
+#   · sh605488 福莱新材：近5日 27.42% ／ 近21日 50.20%
+#   · sz002696 百洋股份：近5日 9.07% ／ 近21日 62.61%
+#   · sh600785 新华百货：近5日 21.72% ／ 近21日 30.52%
+#   · sz002376 新北洋：近5日 4.22% ／ 近21日 20.61%
+#   · sz300115 长盈精密：近5日 9.97% ／ 近21日 26.11%
+#   · sh688772 珠海冠宇：近5日 7.77% ／ 近21日 4.46%
+#   · sz300432 富临精工：近5日 8.95% ／ 近21日 11.99%
+#   · sh601077 渝农商行：近5日 2.98% ／ 近21日 8.05%
+#   · sz300406 九强生物：近5日 5.39% ／ 近21日 4.86%
+#   · sh603126 中材节能：近5日 0.93% ／ 近21日 3.17%
+#   · sh603939 益丰药房：近5日 -0.31% ／ 近21日 9.70%
+#   · sh601728 中国电信：近5日 3.42% ／ 近21日 10.67%
+#   · sz002966 苏州银行：近5日 4.75% ／ 近21日 1.93%
+# ⚠️ 诚实护栏：本卡所有信号均为 AI 推导『意向』，未产生任何真实成交；不写成交价、不只报喜、不包装成已建仓。
+# new_picks 覆盖：3/5 组已提供字段（其中 2 组当日有新增推荐、1 组当日新增 0 只）
+# ⚠️ 2 组未上报（无件）：HRS,QD</pre>
+<div>
 <h1>每日实盘推荐卡 · 2026-10-27</h1>
 <div class="sub">生成 2026-10-27T19:30:01 ｜ 账户 30000 元 ｜ 成本口径：实盘真实费率 ｜ 仓位闸门：CX QF-1.2 ｜ ⚠️ 全部为 AI 意向，未成交</div>
 <div class="kpi">
@@ -376,5 +577,11 @@ new_picks 覆盖：3/5 组已提供字段（其中 2 组当日有新增推荐、
 阶段1 不使用净值加权（五组净值当前不可横比）。WB 的 C8 择时闸门为空壳，仓位判断归 CX QF-1.2。<br>
 <b>诚实护栏（三禁）：① 不写成交价（本卡所有价位均为信号参考/意向，非真实成交）；② 不只报喜（盈亏/未达共识均如实呈现）；③ 不包装成已建仓（全部为 AI 推导意向，未产生任何真实成交）。</b>
 </div>
+</div>
+</details>
 
-</div></body></html>
+<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损为机械参考位，跳空/跌停情形条件单可能不成交。</div>
+
+</div>
+<footer>数据截至：2026-10-27 深夜（本地构建，AI 生成） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+</body></html>

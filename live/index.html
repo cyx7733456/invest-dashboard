@@ -10,7 +10,8 @@ a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
 .wrap{max-width:1080px;margin:0 auto;padding:22px}
 h1{font-size:22px;margin:6px 0 2px} h2{font-size:16px;margin:26px 0 10px;border-left:3px solid var(--acc);padding-left:9px}
 .sub{color:var(--dim);font-size:12px}
-.grid{display:grid;gap:12px} .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g6{grid-template-columns:repeat(3,1fr)}
+.grid{display:grid;gap:12px} .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g6{grid-template-columns:repeat(3,1fr)} .gk{grid-template-columns:repeat(5,1fr)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
 .card b{font-size:19px} .card .lab{color:var(--dim);font-size:11px;display:block}
 .up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)} .warn{color:var(--warn)}
@@ -20,25 +21,47 @@ th{background:#171c26;color:var(--dim);font-weight:600} th:first-child,td:first-
 .tag{display:inline-block;background:#1c2432;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:11px;color:var(--dim);margin:2px}
 .entry{display:block;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px;color:var(--tx)}
 .entry:hover{border-color:var(--acc);text-decoration:none}
+.bigbtn{display:inline-block;background:#1f3a5f;border:1px solid var(--acc);border-radius:8px;padding:10px 26px;color:#cfe4ff;font-size:15px;font-weight:700;margin-top:10px}
+.bigbtn:hover{background:#25477a;text-decoration:none}
 footer{color:#5c6575;font-size:11px;text-align:center;padding:22px;border-top:1px solid var(--line);margin-top:34px}
 .btns button{background:#171c26;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 14px;margin-right:8px;cursor:pointer;font-size:13px}
 .btns button.on{border-color:var(--acc);color:var(--acc)}
 .holdsec{display:none} .holdsec.on{display:block}
-@media(max-width:900px){.g5,.g3,.g6{grid-template-columns:repeat(2,1fr)}}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:12px;background:var(--panel)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+.compass{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.cbarwrap{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.cseg{display:flex;align-items:center;justify-content:center;color:#d7dee8;font-size:12px;min-width:0}
+.cln{margin:8px 0 4px;font-size:13px}
+.grow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed #1c2330;font-size:12.5px}
+.gbadge{display:inline-block;background:#1f2937;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-weight:700;min-width:34px;text-align:center}
+.stag{font-weight:700;min-width:52px}
+.cbar{display:inline-block;width:80px;height:7px;background:#0d1117;border:1px solid var(--line);border-radius:4px;overflow:hidden;vertical-align:middle}
+.cbar i{display:block;height:100%;background:var(--acc)}
+.gbasis{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.status i{font-style:normal;margin:0 2px}
+.riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
+@media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
 </style></head><body>
-<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html">实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
+<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html" class=on>实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
 <div class="wrap">
 
 <h1>实盘推荐专区</h1>
-<div class="sub">按日期倒序；卡片口径：买入档 = 行业共识 ind_n≥2；价格列可能为「本组未设」（QD 无日内价源）</div>
-<div class="grid" style="grid-template-columns:1fr;margin-top:14px"><a class="entry" href="2026-10-27.html"><b>2026-10-27 实盘卡</b><br>
-<span class="dim">共识买入 未标注 只 ｜ 观察池 未标注 只 ｜ 缺失组：未标注</span><br>
-<span class="dim">来源：daily_live_card_2026-10-27.html/.csv/.txt（照原文呈现，不加工）</span></a><a class="entry" href="2026-10-26.html"><b>2026-10-26 实盘卡</b><br>
-<span class="dim">共识买入 未标注 只 ｜ 观察池 未标注 只 ｜ 缺失组：未标注</span><br>
-<span class="dim">来源：daily_live_card_2026-10-26.html/.csv/.txt（照原文呈现，不加工）</span></a><a class="entry" href="2026-10-23.html"><b>2026-10-23 实盘卡</b><br>
-<span class="dim">共识买入 未标注 只 ｜ 观察池 未标注 只 ｜ 缺失组：未标注</span><br>
-<span class="dim">来源：daily_live_card_2026-10-23.html/.csv/.txt（照原文呈现，不加工）</span></a></div>
+<div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；价格列可能为「本组未设」（QD 无日内价源）</div>
+<div class="card" style="margin-top:14px">
+  <span class="lab">最新一日 · 2026-10-27（生成 2026-10-27T19:30:01）</span>
+  <b style="font-size:24px">共识买入 7 只</b> <span class="dim">｜ 观察 13 只</span><br>
+  <span class="dim">信号来源 CX,DSK,WB ｜ 缺失 QD,HRS</span><br>
+  <span class="dim">风险等级：R3 · 中等风险·市场偏空需谨慎</span><br>
+  <span class="status"><span class="up">WB✅</span> · <span class="up">CX✅</span> · <span class="warn">QD❌未上报</span> · <span class="warn">DSK⚠当日0只</span> · <span class="up">HRS✅</span></span>
+  <br><a class="bigbtn" href="2026-10-27.html">查看当日详情 →</a>
+</div>
+<h2>历史日期</h2>
+<div class="grid g3"><a class="entry" href="2026-10-27.html"><b>2026-10-27</b><br>
+<span class="dim">共识买入 7 只 ｜ 观察 13 只</span><br><span class="dim">风向：看空 2 / 中性 1 / 看多 0</span></a><a class="entry" href="2026-10-26.html"><b>2026-10-26</b><br>
+<span class="dim">共识买入 36 只 ｜ 观察 4 只</span><br><span class="dim">风向：看空 2 / 中性 2 / 看多 0</span></a><a class="entry" href="2026-10-23.html"><b>2026-10-23</b><br>
+<span class="dim">卡面自述新增推荐 30 只（旧口径，无逐票 csv）</span><br><span class="dim">风向：看空 1 / 中性 3 / 看多 0</span></a></div>
 
 </div>
-<footer>数据截至：2026-10-27 深夜（构建于本地，AI 生成） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+<footer>数据截至：2026-10-27 深夜（本地构建，AI 生成） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
 </body></html>
