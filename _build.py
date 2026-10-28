@@ -22,6 +22,7 @@ R3 首页 Top3：来源组徽章 + 参与状态条 + 选取规则注明
 R4 首页新增「实盘风向标」板块（位于当日实盘推荐之前）
 """
 import csv, json, os, html, re
+from datetime import datetime as _dt
 
 ROOT = "/Users/apple/Desktop/Investment"
 OUT = os.path.join(ROOT, "公共/看板设计/dashboard_v1")
@@ -40,8 +41,6 @@ def disp_groups(s):
     for k, v in GD.items():
         out = re.sub(rf"\b{k}\b", v, out)
     return out.replace(",", "、")
-TODAY = "2026-10-27"
-BUILD_TS = "2026-10-27 深夜（本地构建，AI 生成）"
 
 # ---------- 日期探测 ----------
 def card_dates():
@@ -54,6 +53,10 @@ def card_dates():
 
 CARD_DATES = card_dates()
 LATEST = CARD_DATES[-1]
+# 自动化修正（2026-10-28）：TODAY 不再写死——跟随最新实盘卡日期，
+# 否则每日定时重跑生成的永远是旧日期口径
+TODAY = LATEST
+BUILD_TS = _dt.now().strftime("%Y-%m-%d %H:%M") + "（本地自动构建）"
 
 def report_path(g, date):
     return f"{DATA}/daily_report_{g}_{date}.json"

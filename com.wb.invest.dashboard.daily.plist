@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.wb.invest.dashboard.daily</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/apple/.workbuddy/binaries/python/versions/3.13.12/bin/python3</string>
+		<string>/Users/apple/Desktop/Investment/公共/看板设计/dashboard_v1/dashboard_daily_push.py</string>
+	</array>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Hour</key>
+			<integer>19</integer>
+			<key>Minute</key>
+			<integer>50</integer>
+		</dict>
+		<dict>
+			<key>Hour</key>
+			<integer>0</integer>
+			<key>Minute</key>
+			<integer>50</integer>
+		</dict>
+	</array>
+	<key>StandardOutPath</key>
+	<string>/Users/apple/Library/Logs/wb/dashboard_daily.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/apple/Library/Logs/wb/dashboard_daily.err.log</string>
+</dict>
+</plist>
