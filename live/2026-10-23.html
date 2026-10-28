@@ -77,7 +77,7 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
 <div class="grid gk" style="margin-top:12px">
   <div><label>✅ 共识买入</label><b class="dim">取不到</b><small>当日卡 csv 无逐票行</small></div>
   <div><label>卡面自述新增推荐</label><b>30</b><small>旧口径，非共识口径</small></div>
-  <div><label>📥 参与组</label><b>5/5</b><small>CX,DSK,HRS,QD,WB</small></div>
+  <div><label>📥 参与组</label><b>5/5</b><small>2组、4组、5组、3组、1组</small></div>
   <div><label>🧭 当日风向</label><b style="font-size:14px">1 看空<br>3 中性<br>0 看多</b><small>按各组上报件实况统计</small></div>
   <div><label>风险等级</label><b style="font-size:14px">R2 · 中低风险·市场偏空需谨慎</b><small>卡面自述</small></div>
 </div>
@@ -87,15 +87,15 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
 <div class="compass">
   <div class="cbarwrap"><div class="cseg" style="width:60%;background:#6e7681" title="中性 3 组">3</div><div class="cseg" style="width:20%;background:var(--dn)" title="看空 1 组">1</div><div class="cseg" style="width:20%;background:#30363d" title="无观点 1 组">1</div></div>
   <div class="cln"><span class="dim">中性 3 组</span> · <span class="dn">看空 1 组</span> · <span class="dim">无观点 1 组</span></div>
-  <div class="grow"><span class="gbadge">WB</span>
+  <div class="grow"><span class="gbadge">1组</span>
 <span class="stag dim">中性 <span class="dim">[人工]</span></span>
-<span class="cbar"><i style="width:55%"></i></span><span class="dim">0.55</span><span class="gbasis">市场宽度(站上MA10)：10-21 23.7% → 10-22 13.8% → 10-23 30.3%（HRS长库全样本5486只qfq实测）…</span></div><div class="grow"><span class="gbadge">CX</span>
+<span class="cbar"><i style="width:55%"></i></span><span class="dim">0.55</span><span class="gbasis">市场宽度(站上MA10)：10-21 23.7% → 10-22 13.8% → 10-23 30.3%（HRS长库全样本5486只qfq实测）…</span></div><div class="grow"><span class="gbadge">2组</span>
 <span class="stag dim">中性</span>
-<span class="cbar"><i style="width:55%"></i></span><span class="dim">0.55</span><span class="gbasis">本组 regime=震荡市、risk=34.65、暴露 E=0.50；全池 r60/r20 与宽度 21 日平滑，样本 4912 只</span></div><div class="grow"><span class="gbadge">QD</span>
+<span class="cbar"><i style="width:55%"></i></span><span class="dim">0.55</span><span class="gbasis">本组 regime=震荡市、risk=34.65、暴露 E=0.50；全池 r60/r20 与宽度 21 日平滑，样本 4912 只</span></div><div class="grow"><span class="gbadge">3组</span>
 <span class="stag dim">中性</span>
-<span class="cbar"><i style="width:40%"></i></span><span class="dim">0.40</span><span class="gbasis">闸门 2021 后配对超额 −1.9646pp（t −3.305）⇒ 无择时依据；延窗 10 日篮子简单加总 -6.5832pp、本组无止损规则…</span></div><div class="grow"><span class="gbadge">DSK</span>
+<span class="cbar"><i style="width:40%"></i></span><span class="dim">0.40</span><span class="gbasis">闸门 2021 后配对超额 −1.9646pp（t −3.305）⇒ 无择时依据；延窗 10 日篮子简单加总 -6.5832pp、本组无止损规则…</span></div><div class="grow"><span class="gbadge">4组</span>
 <span class="stag dim">无观点 <span class="dim">（本组无择时模型）</span></span>
-<span class="cbar"><i style="width:0%"></i></span><span class="dim">0.00</span><span class="gbasis">本组为机械 R3 等权持有，无择时模型；此字段为占位，confidence=0 即无观点（15 只持仓，非市场判断）</span></div><div class="grow"><span class="gbadge">HRS</span>
+<span class="cbar"><i style="width:0%"></i></span><span class="dim">0.00</span><span class="gbasis">本组为机械 R3 等权持有，无择时模型；此字段为占位，confidence=0 即无观点（15 只持仓，非市场判断）</span></div><div class="grow"><span class="gbadge">5组</span>
 <span class="stag dn">看空</span>
 <span class="cbar"><i style="width:80%"></i></span><span class="dim">0.80</span><span class="gbasis">20日中位收益 -5.11%(n=2000)，站上MA20 19%；阈值±3% 机械判定</span></div>
   <div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型；未上报 = 当日上报件缺件。卡面旧汇总把无观点组计入中性，本区按上报件实况区分。</div>
@@ -108,25 +108,25 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
 <div class="dim" style="padding:8px 0">取不到：当日卡 csv 无逐票行（旧口径卡未提供），仅卡面自述口径，见下方原文折叠。</div>
 
 <details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
-<div class="grow"><span class="gbadge">WB</span><span class="gbasis" style="white-space:normal">市场宽度(站上MA10)：10-21 23.7% → 10-22 13.8% → 10-23 30.3%（HRS长库全样本5486只qfq实测）；10-23 涨跌 4446涨/903跌=81.0%、中位数+1.54%、严格涨停82家（kline_incr_HRS_20261023.csv 官方pct_chg）；融资余额 24191.0亿、10日连降（证券时报·数据宝，数据日10-22）。判断：普跌后的第一次像样修复，宽度翻倍但绝对水平仅三成、杠杆仍在撤 ⇒ 按反弹不按反转。</span></div><div class="grow"><span class="gbadge">CX</span><span class="gbasis" style="white-space:normal">本组 regime=震荡市、risk=34.65、暴露 E=0.50；全池 r60/r20 与宽度 21 日平滑，样本 4912 只</span></div><div class="grow"><span class="gbadge">QD</span><span class="gbasis" style="white-space:normal">闸门 2021 后配对超额 −1.9646pp（t −3.305）⇒ 无择时依据；延窗 10 日篮子简单加总 -6.5832pp、本组无止损规则；这里的「中性」是自述没有依据，不是一条预测</span></div><div class="grow"><span class="gbadge">DSK</span><span class="gbasis" style="white-space:normal">本组为机械 R3 等权持有，无择时模型；此字段为占位，confidence=0 即无观点（15 只持仓，非市场判断）</span></div><div class="grow"><span class="gbadge">HRS</span><span class="gbasis" style="white-space:normal">20日中位收益 -5.11%(n=2000)，站上MA20 19%；阈值±3% 机械判定</span></div>
+<div class="grow"><span class="gbadge">1组</span><span class="gbasis" style="white-space:normal">市场宽度(站上MA10)：10-21 23.7% → 10-22 13.8% → 10-23 30.3%（HRS长库全样本5486只qfq实测）；10-23 涨跌 4446涨/903跌=81.0%、中位数+1.54%、严格涨停82家（kline_incr_HRS_20261023.csv 官方pct_chg）；融资余额 24191.0亿、10日连降（证券时报·数据宝，数据日10-22）。判断：普跌后的第一次像样修复，宽度翻倍但绝对水平仅三成、杠杆仍在撤 ⇒ 按反弹不按反转。</span></div><div class="grow"><span class="gbadge">2组</span><span class="gbasis" style="white-space:normal">本组 regime=震荡市、risk=34.65、暴露 E=0.50；全池 r60/r20 与宽度 21 日平滑，样本 4912 只</span></div><div class="grow"><span class="gbadge">3组</span><span class="gbasis" style="white-space:normal">闸门 2021 后配对超额 −1.9646pp（t −3.305）⇒ 无择时依据；延窗 10 日篮子简单加总 -6.5832pp、本组无止损规则；这里的「中性」是自述没有依据，不是一条预测</span></div><div class="grow"><span class="gbadge">4组</span><span class="gbasis" style="white-space:normal">本组为机械 R3 等权持有，无择时模型；此字段为占位，confidence=0 即无观点（15 只持仓，非市场判断）</span></div><div class="grow"><span class="gbadge">5组</span><span class="gbasis" style="white-space:normal">20日中位收益 -5.11%(n=2000)，站上MA20 19%；阈值±3% 机械判定</span></div>
 <hr style="border:0;border-top:1px dashed #1c2330">
 <pre style="white-space:pre-wrap;color:var(--dim);font-size:12px"># 每日实盘推荐卡（2026-10-23）· 生成 2026-10-26T09:52:52
 # 账户总额 30000 元 | 计划投入合计 0.00 | 组合最大亏损 0.00（0.00%）
-# 今日信号来源：CX,DSK,HRS,QD,WB / 缺失：无
+# 今日信号来源：2组、4组、5组、3组、1组 / 缺失：无
 # 成本口径：实盘按真实费率（万2.5含最低5元 + 卖出印花税0.05%，ETF无印花税）
-# 仓位闸门：CX QF-1.2（WB 的 C8 为空壳，不参与）
+# 仓位闸门：2组 QF-1.2（1组 的 C8 为空壳，不参与）
 # ⚠️ 本卡由 AI 生成，非投资建议；是否录入由用户自行决定
 # 今日新增推荐 30 只（票源=new_picks） ｜ 现有持仓展示 65 只（来源=picks，非推荐，不计共识票）
 # ── 市场研判（汇总 5 组 market_view，原样罗列不平均）──
 # 看多 0 组 / 看空 1 组 / 中性 4 组 / 未知 0 组
-#   · WB: 中性｜置信度=0.55｜is_human=True
-#   · CX: 中性｜置信度=0.55｜is_human=False（含 CX QF-1.2 regime 闸门信号）
-#   · QD: 中性｜置信度=0.4｜is_human=False
-#   · DSK: 中性｜置信度=0.0｜is_human=False
-#   · HRS: 看空｜置信度=0.8｜is_human=False
+#   · 1组: 中性｜置信度=0.55｜is_human=True
+#   · 2组: 中性｜置信度=0.55｜is_human=False（含 2组 QF-1.2 regime 闸门信号）
+#   · 3组: 中性｜置信度=0.4｜is_human=False
+#   · 4组: 中性｜置信度=0.0｜is_human=False
+#   · 5组: 看空｜置信度=0.8｜is_human=False
 # 热点板块（共识票行业分布 Top5）：机械设备(5)、医药生物(5)、电子(4)、汽车(3)、计算机(3)
 # 风险等级：R2 · 中低风险·市场偏空需谨慎
-# 仓位建议：本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 CX QF-1.2 闸门提供
+# 仓位建议：本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 2组 QF-1.2 闸门提供
 # ── 周/月回顾（canon hfq 区间涨跌，含除权跳变可能失真）──
 #   · sh688360 德马科技：近5日 28.46% ／ 近21日 27.08%
 #   · sz002164 宁波东力：近5日 33.18% ／ 近21日 34.09%
@@ -160,10 +160,10 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
 #   · sh688425 铁建重工：近5日 2.53% ／ 近21日 2.53%
 # ⚠️ 诚实护栏：本卡所有信号均为 AI 推导『意向』，未产生任何真实成交；不写成交价、不只报喜、不包装成已建仓。
 # new_picks 覆盖：4/5 组已提供字段（其中 3 组当日有新增推荐、1 组当日新增 0 只）
-# ⚠️ 1 组未提供 new_picks 字段（尚未实现 v1.1）：DSK —— 这是『未实现规范』，不是『今天没有推荐』</pre>
+# ⚠️ 1 组未提供 new_picks 字段（尚未实现 v1.1）：4组 —— 这是『未实现规范』，不是『今天没有推荐』</pre>
 <div>
 <h1>每日实盘推荐卡 · 2026-10-23</h1>
-<div class="sub">生成 2026-10-26T09:52:52 ｜ 账户 30000 元 ｜ 成本口径：实盘真实费率 ｜ 仓位闸门：CX QF-1.2 ｜ ⚠️ 全部为 AI 意向，未成交</div>
+<div class="sub">生成 2026-10-26T09:52:52 ｜ 账户 30000 元 ｜ 成本口径：实盘真实费率 ｜ 仓位闸门：2组 QF-1.2 ｜ ⚠️ 全部为 AI 意向，未成交</div>
 <div class="kpi">
  <div><label>信号来源组</label><b>5/5</b></div>
  <div><label>缺失组</label><b>无</b></div>
@@ -175,39 +175,39 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
  <div><label>现有持仓展示（来源=picks）</label><b>65 只</b><small>非推荐，不计共识票</small></div>
  <div><label>已提供 new_picks 字段</label><b>4/5</b></div>
  <div><label>未提供 new_picks 字段</label><b>1</b>
-   <small>DSK</small></div>
+   <small>4组</small></div>
 </div>
 <div class="kpi">
  <div><label>风险等级</label><b class="r2">R2</b><small>中低风险·市场偏空需谨慎</small></div>
  <div><label>市场研判</label><b>0多/1空/4中</b><small>原样汇总 5 组</small></div>
  <div><label>热点板块</label><b>机械设备、医药生物、电子</b><small>共识票行业分布</small></div>
- <div><label>仓位建议</label><b>不预设金额</b><small>档位随共识；上限归 CX QF-1.2</small></div>
+ <div><label>仓位建议</label><b>不预设金额</b><small>档位随共识；上限归 2组 QF-1.2</small></div>
 </div>
 <div class="warn" style="margin-top:0">
 <b>市场研判（汇总 5 组 market_view，原样罗列不平均）：</b><br>
 看多 0 组 ／ 看空 1 组 ／ 中性 4 组 ／ 未知 0 组<br>
-WB: 中性｜置信度=0.55｜is_human=True<br>CX: 中性｜置信度=0.55｜is_human=False（含 CX QF-1.2 regime 闸门信号）<br>QD: 中性｜置信度=0.4｜is_human=False<br>DSK: 中性｜置信度=0.0｜is_human=False<br>HRS: 看空｜置信度=0.8｜is_human=False<br>
+1组: 中性｜置信度=0.55｜is_human=True<br>2组: 中性｜置信度=0.55｜is_human=False（含 2组 QF-1.2 regime 闸门信号）<br>3组: 中性｜置信度=0.4｜is_human=False<br>4组: 中性｜置信度=0.0｜is_human=False<br>5组: 看空｜置信度=0.8｜is_human=False<br>
 <b>热点板块（共识票行业分布 Top5）：</b>机械设备(5)、医药生物(5)、电子(4)、汽车(3)、计算机(3)<br>
 <b>风险等级：R2 · 中低风险·市场偏空需谨慎</b>（R1低→R5高，定性不定量）<br>
-<b>仓位建议：</b>本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 CX QF-1.2 闸门提供。<br>
+<b>仓位建议：</b>本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 2组 QF-1.2 闸门提供。<br>
 <b style="color:#d29922">📅 周/月回顾（canon hfq 区间涨跌，含除权跳变可能失真）：</b><br>sh688360 德马科技：近5日 28.46% ／ 近21日 27.08%<br>sz002164 宁波东力：近5日 33.18% ／ 近21日 34.09%<br>sz300296 利亚德：近5日 62.67% ／ 近21日 55.41%<br>sz301550 斯菱智驱：近5日 37.92% ／ 近21日 21.54%<br>sh600267 海正药业：近5日 28.65% ／ 近21日 20.00%<br>sh688039 当虹科技：近5日 25.79% ／ 近21日 14.89%<br>sh688213 思特威：近5日 12.95% ／ 近21日 12.55%<br>sz002249 大洋电机：近5日 23.86% ／ 近21日 18.25%<br>sz300244 迪安诊断：近5日 16.26% ／ 近21日 5.56%<br>sz002076 星光股份：近5日 14.75% ／ 近21日 18.01%<br>sh603766 隆鑫通用：近5日 4.75% ／ 近21日 7.40%<br>sz301331 恩威医药：近5日 6.98% ／ 近21日 1.10%<br>sz002609 捷顺科技：近5日 5.43% ／ 近21日 3.56%<br>sh600329 达仁堂：近5日 10.43% ／ 近21日 16.31%<br>sh603776 永安行：近5日 1.64% ／ 近21日 1.30%<br>sz300188 国投智能：近5日 6.50% ／ 近21日 4.08%<br>sh605369 拱东医疗：近5日 5.51% ／ 近21日 -2.20%<br>sh600598 北大荒：近5日 4.83% ／ 近21日 9.90%<br>sz302132 中航成飞：近5日 5.78% ／ 近21日 15.25%<br>sz002337 赛象科技：近5日 8.35% ／ 近21日 4.23%<br>sh688584 上海合晶：近5日 -1.45% ／ 近21日 -22.83%<br>sz002838 道恩股份：近5日 0.77% ／ 近21日 -18.93%<br>sh688173 希荻微：近5日 3.57% ／ 近21日 -13.43%<br>sh688523 航天环宇：近5日 5.26% ／ 近21日 -4.36%<br>sz000012 南玻A：近5日 0.57% ／ 近21日 -4.06%<br>sz002300 太阳电缆：近5日 3.46% ／ 近21日 -2.60%<br>sh601369 陕鼓动力：近5日 2.15% ／ 近21日 -4.94%<br>sz002783 凯龙股份：近5日 -1.05% ／ 近21日 -7.01%<br>sh600583 海油工程：近5日 -3.27% ／ 近21日 -6.04%<br>sh688425 铁建重工：近5日 2.53% ／ 近21日 2.53%<br>
 </div>
 <div class="warn" style="margin-top:0">
 <b>票源口径（2026-10-25 起）：</b>跨组共识票<b>只从 <code>new_picks</code> 取</b>；
 <code>picks</code>/<code>holdings</code> 是现有持仓展示，<b>不是推荐</b>，不参与计票。<br>
-<b style="color:#d29922">⚠️ 1 组未提供 new_picks 字段（DSK）＝尚未实现 v1.1 规范，这是「未实现」，不是「今天没有推荐」，汇总器不静默计为 0 票。</b>
-new_picks 覆盖：4/5 组已提供字段（其中 3 组当日有新增推荐、1 组当日新增 0 只）<br>⚠️ 1 组未提供 new_picks 字段（尚未实现 v1.1）：DSK —— 这是『未实现规范』，不是『今天没有推荐』
+<b style="color:#d29922">⚠️ 1 组未提供 new_picks 字段（4组）＝尚未实现 v1.1 规范，这是「未实现」，不是「今天没有推荐」，汇总器不静默计为 0 票。</b>
+new_picks 覆盖：4/5 组已提供字段（其中 3 组当日有新增推荐、1 组当日新增 0 只）<br>⚠️ 1 组未提供 new_picks 字段（尚未实现 v1.1）：4组 —— 这是『未实现规范』，不是『今天没有推荐』
 </div>
 <div class="empty">【今日无买入推荐 · 原因：有买入信号但未达共识门槛】
 五组在 2026-10-23 的买入类信号中，没有任何一只标的获得 ≥2 组共识。
-（参与统计：CX,DSK,HRS,QD,WB）
+（参与统计：2组,4组,5组,3组,1组）
 按契约 §5.3 阶段1：未达共识门槛不出买入卡。
 这不是‘没信号’，是‘信号不够一致’——如实呈现，不硬凑。</div>
-<div class="card watch"><div class="ch"><span class="tag">观察池（不买入）</span></div><ul><li><b>sh688360</b> 德马科技 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002164</b> 宁波东力 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz300296</b> 利亚德 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz301550</b> 斯菱智驱 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600267</b> 海正药业 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688039</b> 当虹科技 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688213</b> 思特威 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002249</b> 大洋电机 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz300244</b> 迪安诊断 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002076</b> 星光股份 — 仅 WB 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh603766</b> 隆鑫通用 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz301331</b> 恩威医药 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002609</b> 捷顺科技 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600329</b> 达仁堂 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh603776</b> 永安行 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz300188</b> 国投智能 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh605369</b> 拱东医疗 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600598</b> 北大荒 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz302132</b> 中航成飞 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002337</b> 赛象科技 — 仅 CX 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688584</b> 上海合晶 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002838</b> 道恩股份 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688173</b> 希荻微 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688523</b> 航天环宇 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz000012</b> 南玻A — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002300</b> 太阳电缆 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh601369</b> 陕鼓动力 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002783</b> 凯龙股份 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600583</b> 海油工程 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688425</b> 铁建重工 — 仅 HRS 推荐（1/5，未达共识门槛，不买入）</li></ul></div>
+<div class="card watch"><div class="ch"><span class="tag">观察池（不买入）</span></div><ul><li><b>sh688360</b> 德马科技 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002164</b> 宁波东力 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz300296</b> 利亚德 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz301550</b> 斯菱智驱 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600267</b> 海正药业 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688039</b> 当虹科技 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688213</b> 思特威 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002249</b> 大洋电机 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz300244</b> 迪安诊断 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002076</b> 星光股份 — 仅 1组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh603766</b> 隆鑫通用 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz301331</b> 恩威医药 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002609</b> 捷顺科技 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600329</b> 达仁堂 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh603776</b> 永安行 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz300188</b> 国投智能 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh605369</b> 拱东医疗 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600598</b> 北大荒 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz302132</b> 中航成飞 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002337</b> 赛象科技 — 仅 2组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688584</b> 上海合晶 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002838</b> 道恩股份 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688173</b> 希荻微 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688523</b> 航天环宇 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz000012</b> 南玻A — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002300</b> 太阳电缆 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh601369</b> 陕鼓动力 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sz002783</b> 凯龙股份 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh600583</b> 海油工程 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li><li><b>sh688425</b> 铁建重工 — 仅 5组 推荐（1/5，未达共识门槛，不买入）</li></ul></div>
 <div class="warn">
 ⚠️ 本卡由 AI 基于五组公开信号汇总生成，<b>非投资建议</b>。是否录入条件单由用户自行决定。<br>
 共识规则：≥3 组买入（满档）/ =2 组（半档）/ =1 组（观察，不买入）/ =0 组（空卡）。<br>
-阶段1 不使用净值加权（五组净值当前不可横比）。WB 的 C8 择时闸门为空壳，仓位判断归 CX QF-1.2。<br>
+阶段1 不使用净值加权（五组净值当前不可横比）。1组 的 C8 择时闸门为空壳，仓位判断归 2组 QF-1.2。<br>
 <b>诚实护栏（三禁）：① 不写成交价（本卡所有价位均为信号参考/意向，非真实成交）；② 不只报喜（盈亏/未达共识均如实呈现）；③ 不包装成已建仓（全部为 AI 推导意向，未产生任何真实成交）。</b>
 </div>
 </div>

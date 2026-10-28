@@ -28,6 +28,18 @@ OUT = os.path.join(ROOT, "公共/看板设计/dashboard_v1")
 DATA = os.path.join(ROOT, "公共/数据")
 CARDS = os.path.join(ROOT, "投资1组_WB/实盘化方案/daily_live_cards")
 GROUPS = ["WB", "CX", "QD", "DSK", "HRS"]
+# 显示名映射（用户 2026-10-28 要求：页面上一律用「1组~5组」，不用英文简称；
+# 文件名/HTML id/图表数据键仍用内部代码，不影响任何逻辑）
+GD = {"WB": "1组", "CX": "2组", "QD": "3组", "DSK": "4组", "HRS": "5组"}
+
+def disp_groups(s):
+    """把卡面来源/缺失串里的组代码替换为显示名，如 'CX,DSK,WB' → '2组、4组、1组'。"""
+    if not s:
+        return s
+    out = str(s)
+    for k, v in GD.items():
+        out = re.sub(rf"\b{k}\b", v, out)
+    return out.replace(",", "、")
 TODAY = "2026-10-27"
 BUILD_TS = "2026-10-27 深夜（本地构建，AI 生成）"
 
@@ -133,7 +145,7 @@ def compass_html(date):
         short = b if len(b) <= 72 else b[:72] + "…"
         tag_note = ' <span class="dim">（本组无择时模型）</span>' if r["no_timing"] else ""
         human_note = ' <span class="dim">[人工]</span>' if r.get("human") is True else ""
-        grows += f"""<div class="grow"><span class="gbadge">{r['g']}</span>
+        grows += f"""<div class="grow"><span class="gbadge">{GD[r['g']]}</span>
 <span class="stag {stag_cls[st]}">{st}{tag_note}{human_note}</span>
 {conf_bar}<span class="gbasis">{short}</span></div>"""
     return f"""
@@ -195,7 +207,7 @@ def pick_table(rows, date, kind):
         tp, sl = r.get("止盈价/锚") or "", r.get("止损价/锚") or ""
         cons = f" <span class='dim'>共识 {html.escape(r['共识票数'])}/5</span>" if r.get("共识票数") else ""
         tr += f"""<tr><td>{html.escape(r['代码'])}</td><td>{html.escape(r['名称'])}</td>
-<td>{html.escape(r['动作'].split('（')[0])}</td><td><span class="gbadge">{html.escape(r['组'])}</span>{cons}</td>
+<td>{html.escape(r['动作'].split('（')[0])}</td><td><span class="gbadge">{GD.get(r['组'], html.escape(r['组']))}</span>{cons}</td>
 <td>{ind_s}</td><td>{html.escape(r['买入参考价/触发价'])} <span class="dim">({html.escape(r.get('价格口径') or '')})</span></td>
 <td>{sl or '<span class=dim>未上报</span>'}</td><td>{tp or '<span class=dim>未上报</span>'}</td></tr>"""
     return f"""<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th></tr>{tr}</table>
@@ -206,6 +218,10 @@ def card_html_parts(date):
         src = f.read()
     styles = "".join(re.findall(r"<style>.*?</style>", src, re.S)).replace("<style>", "").replace("</style>", "")
     body = re.search(r"<body>(.*)</body>", src, re.S).group(1)
+    # 卡面原文中的组简称同步替换为显示名（实测卡面 HTML 属性中无组代号，仅文本，
+    # 前后向断言排除 daily_report_WB_ / 投资1组_WB 等文件路径与 CSS 类名）
+    body = re.sub(r"(?<![A-Za-z0-9_])(WB|CX|QD|DSK|HRS)(?![A-Za-z0-9_])",
+                  lambda m: GD[m.group(1)], body)
     return styles, body
 
 # ---------- 通用骨架 ----------
@@ -284,11 +300,11 @@ def part_status_html(date):
     for g in GROUPS:
         d = load_report(g, date)
         if d is None:
-            bits.append(f'<span class="warn">{g}❌未上报</span>')
+            bits.append(f'<span class="warn">{GD[g]}❌未上报</span>')
         elif len(d.get("new_picks") or []) == 0:
-            bits.append(f'<span class="warn">{g}⚠当日0只</span>')
+            bits.append(f'<span class="warn">{GD[g]}⚠当日0只</span>')
         else:
-            bits.append(f'<span class="up">{g}✅</span>')
+            bits.append(f'<span class="up">{GD[g]}✅</span>')
     return '<span class="status">' + " · ".join(bits) + "</span>"
 
 # ================= R4+R3：首页 =================
@@ -312,7 +328,7 @@ for i, r in enumerate(TOP3):
     ind = im_latest.get(r["代码"])
     ind_s = html.escape(ind) if ind else '<span class="dim">未上报</span>'
     top3_html += f"""<div class="card"><span class="lab">{i+1}. {html.escape(r['名称'])}（{r['代码']}）· {ind_s}</span>
-<b class="up">{html.escape(r['动作'].split('（')[0])}</b> <span class="gbadge">{html.escape(r['组'])}</span>
+<b class="up">{html.escape(r['动作'].split('（')[0])}</b> <span class="gbadge">{GD.get(r['组'], html.escape(r['组']))}</span>
 <span class="dim">共识 {html.escape(r.get('共识票数') or '—')}/5 组</span><br>
 <span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
 <span class="dim">有效期 {r['有效期(天)']} 天 ｜ 意向非成交</span></div>"""
@@ -321,7 +337,7 @@ nav_cards = ""
 for g in GROUPS:
     m = M[g]
     lag = "" if m["last"] == TODAY else f'<span class="warn">数据截至 {m["last"]}</span>'
-    nav_cards += f"""<div class="card"><span class="lab">{g} 组 · 模拟净值</span>
+    nav_cards += f"""<div class="card"><span class="lab">{GD[g]} · 模拟净值</span>
 <b>{m['act']:.4f}</b><br>{pct(m['dchg'])} <span class="dim">当日</span><br>
 <span class="dim">累计 {m['cum']*100:+.1f}% ｜ 持仓 {m['n_hold']} 只</span><br>{lag}</div>"""
 
@@ -339,7 +355,7 @@ seg_style = {"看多": "var(--up)", "看空": "var(--dn)", "中性": "#6e7681", 
 home_segs = "".join(f'<div class="cseg" style="width:{c/5*100:.0f}%;background:{seg_style[k]}" title="{k} {c} 组">{c if c else ""}</div>'
                     for k, c in counts.items() if c)
 home_rows = "".join(
-    f'<div class="grow"><span class="gbadge">{r["g"]}</span>'
+    f'<div class="grow"><span class="gbadge">{GD[r["g"]]}</span>'
     f'<span class="stag {"up" if r["state"]=="看多" else "dn" if r["state"]=="看空" else "dim"}{" warn" if r["state"]=="未上报" else ""}">{r["state"]}</span>'
     f'<span class="dim">conf {r["conf"] if r["conf"] is not None else "—"}</span>'
     f'<span class="gbasis">{html.escape(str(r["basis"])[:80])}{"…" if len(str(r["basis"]))>80 else ""}</span></div>'
@@ -347,7 +363,7 @@ home_rows = "".join(
 
 body = f"""
 <h1>五组投资大看板</h1>
-<div class="sub">今日 {TODAY} ｜ 投资一组（WB）承建 ｜ 模拟净值起点 2026-09-03/04，全部数字可溯源至公共数据集与每日上报件</div>
+<div class="sub">今日 {TODAY} ｜ 投资1组承建 ｜ 模拟净值起点 2026-09-03/04，全部数字可溯源至公共数据集与每日上报件</div>
 <h2>五组模拟净值总览</h2>
 <div class="grid g5">{nav_cards}</div>
 <div class="sub" style="margin-top:6px">日胜率口径：act_nav 日收益&gt;0 的交易日 ÷ 总交易日；详见模拟盘赛马页</div>
@@ -390,15 +406,17 @@ for d in reversed(CARD_DATES):
 lf = card_facts(LATEST)
 body = f"""
 <h1>实盘推荐专区</h1>
-<div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；价格列可能为「本组未设」（QD 无日内价源）</div>
+<div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；价格列可能为「本组未设」（3组 无日内价源）</div>
 <div class="card" style="margin-top:14px">
   <span class="lab">最新一日 · {LATEST}（生成 {lf['gen'] or '未上报'}）</span>
   <b style="font-size:24px">共识买入 {lf['n_buy']} 只</b> <span class="dim">｜ 观察 {lf['n_watch']} 只</span><br>
-  <span class="dim">信号来源 {lf['sources']} ｜ 缺失 {lf['missing']}</span><br>
+  <span class="dim">信号来源 {disp_groups(lf['sources'])} ｜ 缺失 {disp_groups(lf['missing'])}</span><br>
   <span class="dim">风险等级：{lf['risk']}</span><br>
   {part_status_html(LATEST)}
   <br><a class="bigbtn" href="{LATEST}.html">查看当日详情 →</a>
 </div>
+<h2>实盘风向标（{LATEST}）</h2>
+{compass_html(LATEST)}
 <h2>历史日期</h2>
 <div class="grid g3">{hist_cards}</div>
 """
@@ -422,18 +440,18 @@ for d in CARD_DATES:
     buy_tbl = pick_table(card_r, d, "买入")
     watch_tbl = pick_table(card_r, d, "观察")
     detail_rows = "".join(
-        f'<div class="grow"><span class="gbadge">{r["g"]}</span>'
+        f'<div class="grow"><span class="gbadge">{GD[r["g"]]}</span>'
         f'<span class="gbasis" style="white-space:normal">{html.escape(str(r["basis"]))}</span></div>'
         for r in drows)
-    orig_hdr = html.escape("\n".join(
-        l for l in open(f"{CARDS}/daily_live_card_{d}.txt").read().splitlines() if l.startswith("#")))
+    orig_hdr = html.escape(disp_groups("\n".join(
+        l for l in open(f"{CARDS}/daily_live_card_{d}.txt").read().splitlines() if l.startswith("#"))))
     body = f"""
 <h1>每日实盘推荐卡 · {d}</h1>
 <div class="sub">生成 {facts['gen'] or '未上报'} ｜ 来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_{d}.{{csv,txt,html}} ｜ <a href="index.html">← 返回实盘列表</a></div>
 <div class="grid gk" style="margin-top:12px">
   {kpi_buy}
   {kpi_watch}
-  <div><label>📥 参与组</label><b>{n_report}/5</b><small>{facts['sources'] or ''}{' ｜ 缺失 ' + facts['missing'] if facts['missing'] and facts['missing'] != '无' else ''}</small></div>
+  <div><label>📥 参与组</label><b>{n_report}/5</b><small>{disp_groups(facts['sources']) or ''}{' ｜ 缺失 ' + disp_groups(facts['missing']) if facts['missing'] and facts['missing'] != '无' else ''}</small></div>
   <div><label>🧭 当日风向</label><b style="font-size:14px">{d_buy_cnt.replace(' / ', '<br>')}</b><small>按各组上报件实况统计</small></div>
   <div><label>风险等级</label><b style="font-size:14px">{facts['risk'] or '未上报'}</b><small>卡面自述</small></div>
 </div>
@@ -468,7 +486,7 @@ rows = ""
 for g in GROUPS:
     m = M[g]
     lag = "" if m["last"] == TODAY else f' <span class="warn">（最后更新 {m["last"]}）</span>'
-    rows += f"""<tr><td>{g}</td><td>{m['act']:.4f}{lag}</td><td>{pct(m['dchg'])}</td><td>{pct(m['cum'])}</td>
+    rows += f"""<tr><td>{GD[g]}</td><td>{m['act']:.4f}{lag}</td><td>{pct(m['dchg'])}</td><td>{pct(m['cum'])}</td>
 <td>{m['winrate']*100:.1f}% <span class="dim">（{m['win']}/{m['n']} 日）</span></td><td>{m['n_hold']}</td><td class="dim">{m['first']} → {m['last']}</td></tr>"""
 
 def hold_table(g):
@@ -497,15 +515,15 @@ def hold_table(g):
 <td>{upc}</td><td>{gv('action')}</td></tr>"""
     note = ""
     if g == "HRS":
-        note = '<div class="sub">注：HRS 上报件无 unreal_pct 字段 → 浮盈列如实标「未知」；该件 nav=0.840125 与 simulated_nav_HRS.csv 最新 act_nav=0.7705 口径不同（CSV 为 steady 档净值），本页净值一律以 CSV 为准。</div>'
+        note = '<div class="sub">注：5组 上报件无 unreal_pct 字段 → 浮盈列如实标「未知」；该件 nav=0.840125 与 simulated_nav_HRS.csv 最新 act_nav=0.7705 口径不同（CSV 为 steady 档净值），本页净值一律以 CSV 为准。</div>'
     if g == "QD":
-        note = '<div class="sub">注：QD 现价为 canon 后复权（计价口径），非市价；本件持仓 entry 无空值。</div>'
+        note = '<div class="sub">注：3组 现价为 canon 后复权（计价口径），非市价；本件持仓 entry 无空值。</div>'
     if g == "CX":
-        note = '<div class="sub">注：CX 持仓为事件式调仓批记录（entry_date=2026-10-08 批，99 只），以 2026-10-27 收盘价逐只重估（覆盖 99/99）。</div>'
+        note = '<div class="sub">注：2组 持仓为事件式调仓批记录（entry_date=2026-10-08 批，99 只），以 2026-10-27 收盘价逐只重估（覆盖 99/99）。</div>'
     return f"""<div class="holdsec{' on' if g == 'WB' else ''}" id="hold_{g}">{note}<table>
 <tr><th>代码</th><th>名称</th><th>行业</th><th>现价</th><th>成本/入场</th><th>浮盈</th><th>动作</th></tr>{tr}</table></div>"""
 
-btns = "".join(f'<button id="btn_{g}" onclick="showH(\'{g}\')"{" class=on" if g == "WB" else ""}>{g}（{len(R[g]["holdings"])} 只）</button>' for g in GROUPS)
+btns = "".join(f'<button id="btn_{g}" onclick="showH(\'{g}\')"{" class=on" if g == "WB" else ""}>{GD[g]}（{len(R[g]["holdings"])} 只）</button>' for g in GROUPS)
 
 body = f"""
 <h1>模拟盘赛马</h1>
@@ -517,7 +535,7 @@ body = f"""
 <tr><th>组</th><th>最新净值</th><th>当日涨跌</th><th>区间累计收益</th><th>日胜率</th><th>当前持仓</th><th>样本区间</th></tr>
 {rows}
 </table>
-<div class="sub" style="margin-top:6px">QD/DSK 最初两档 act_nav 有 1.0/0.997 等起点差异；WB 2026-09-04 首日 act_nav=0.997（含建仓成本）。</div>
+<div class="sub" style="margin-top:6px">3组/4组 最初两档 act_nav 有 1.0/0.997 等起点差异；1组 2026-09-04 首日 act_nav=0.997（含建仓成本）。</div>
 <h2>当前持仓明细（取各组最新上报件 holdings）</h2>
 <div class="btns">{btns}</div>
 {''.join(hold_table(g) for g in GROUPS)}
@@ -533,11 +551,12 @@ function showH(g) {{
 <script>
 const DATA = {json.dumps(chart_data)};
 const COLORS = {{WB:'#58a6ff',CX:'#d2a8ff',QD:'#3fb950',DSK:'#d29922',HRS:'#f85149'}};
+const GNAME = {{WB:'1组',CX:'2组',QD:'3组',DSK:'4组',HRS:'5组'}};
 const labels = DATA.WB.map(d => d[0]);
 new Chart(document.getElementById('navchart'), {{
   type: 'line',
   data: {{ datasets: Object.keys(DATA).map(g => ({{
-    label: g, data: DATA[g].map(d => ({{x: d[0], y: d[1]}})),
+    label: GNAME[g] || g, data: DATA[g].map(d => ({{x: d[0], y: d[1]}})),
     borderColor: COLORS[g], backgroundColor: COLORS[g],
     pointRadius: 2, borderWidth: 1.6, tension: 0.15
   }})) }},
@@ -556,20 +575,20 @@ open(f"{OUT}/sim/index.html", "w").write(page("模拟盘赛马", body, depth=1))
 
 STRAT = {
  "WB": ("V9 月度调仓：反转 + 质量分打分，V6 现金滤镜；持仓 25 只，gate_id=V9，tier=满仓；止盈 +15% / 止损 −10%（自今日收盘价起算）。",
-        "C8 择时闸门为空壳（v9_live_signal_scan.py 仅注释占位）——如实转自 WB 2026-10-27 上报件 data_gaps。"),
+        "C8 择时闸门为空壳（v9_live_signal_scan.py 仅注释占位）——如实转自 1组 2026-10-27 上报件 data_gaps。"),
  "CX": ("QF-1.2：Top100 事件式调仓批（最近批 entry_date=2026-10-08），暴露 E=0.50，risk 闸门（当前 34.65），禁杠杆；虚拟本金 100 万元计分。",
-        "线索取自 CX 2026-10-27 上报件 strategy/tier/gate_id 字段与 data_gaps。"),
+        "线索取自 2组 2026-10-27 上报件 strategy/tier/gate_id 字段与 data_gaps。"),
  "QD": ("QB：震荡 regime，等权 12 槽（当前 11 只持仓 + 1 现金槽），eq=0.590；选股为技术类认证变体 vol20_asc（20 日平均成交量升序）；无止损规则。",
-        "线索取自 QD 2026-10-26 上报件 tier/exit_rule/new_picks_basis 字段。"),
+        "线索取自 3组 2026-10-26 上报件 tier/exit_rule/new_picks_basis 字段。"),
  "DSK": ("机械 R3 等权持有 15 只，无择时模型（market_view confidence=0）；成本按双边 30bp 实扣，post_anchor 严格边界。",
-        "线索取自 DSK 2026-10-27 上报件 market_view/data_gaps 字段。"),
+        "线索取自 4组 2026-10-27 上报件 market_view/data_gaps 字段。"),
  "HRS": ("双档：aggressive Top20 / steady Top50（拥挤倒数），排序键 = 20 日反转升序；20 交易日整篮换仓冻结；C8 择时（202609 市场收益 mean/median 存在口径分歧，现采用 mean）。",
-        "线索取自 HRS 2026-10-26 上报件与 simulated_nav_HRS.csv tier 字段。"),
+        "线索取自 5组 2026-10-26 上报件与 simulated_nav_HRS.csv tier 字段。"),
 }
 scards = ""
 for g in GROUPS:
     main, clue = STRAT[g]
-    scards += f"""<div class="card"><b>{g} 组</b> <span class="tag">版本未上报（契约增补已发，待各组回填）</span>
+    scards += f"""<div class="card"><b>{GD[g]}</b> <span class="tag">版本未上报（契约增补已发，待各组回填）</span>
 <p style="margin:8px 0 4px">{main}</p>
 <p class="dim" style="font-size:12px;margin:4px 0 0">{clue}</p></div>"""
 body = f"""
@@ -580,9 +599,9 @@ body = f"""
 open(f"{OUT}/strategies/index.html", "w").write(page("策略档案", body, depth=1))
 
 STATUS = [
- ("green", "canon 主K线（QD hfq）", "公共/数据/kline_25y_QD_hfq.csv",
+ ("green", "canon 主K线（3组 hfq）", "公共/数据/kline_25y_QD_hfq.csv",
   "实测末行 date=2026-10-27，总数据行 16,230,290（wc -l 16,230,291 含表头），mtime 2026-10-27 19:05。日更正常。"),
- ("yellow", "ETF 510300（WB 源）", "公共/数据/kline_etf_510300_WB.csv",
+ ("yellow", "ETF 510300（1组 源）", "公共/数据/kline_etf_510300_WB.csv",
   "实测末行 date=2026-10-23（应到 10-27）→ 停更，日更修复进行中；mtime 2026-10-25 14:09。"),
  ("grey", "main_flow 主力资金流", "—", "已冻结（2026-10-27 用户裁定不恢复）。"),
  ("grey", "实时/分钟价", "—", "无源；模式 = 收盘后决策、次日开盘执行。"),
