@@ -112,3 +112,35 @@
 - 风向标口径：无观点 = conf==0（本组自述无观点）；未上报 = 当日上报件缺件。卡面旧汇总把无观点组计入中性（如 10-23 卡写「中性4组」），风向标按上报件实况区分，页面已注。
 - **站内链接采用相对路径 .html 形式**（如 `2026-10-27.html`、`live/2026-10-27.html#compass`），未用 `/invest-dashboard/...` 绝对形式：相对 .html 链接在本机双击（file://）与 GitHub Pages（/invest-dashboard/live/2026-10-27.html → 200）下均可直接打开；绝对 /invest-dashboard/ 前缀在本机 file:// 下会 404。锚点 #compass 已校验目标存在。
 - 全站链接自查（含锚点目标）：**0 断链**。
+
+---
+
+## v2.1 密码门锁（2026-10-27 深夜）
+
+### 实现方式
+- 新文件 `auth.js`（站根），置于每页 `<head>` 首位（`_build.py` 模板自动注入，相对路径 `auth.js` / `../auth.js`），未认证时同步隐藏正文（`document.documentElement.style.visibility='hidden'`），防内容闪烁。
+- 密码屏：深色终端风居中卡片「五组投资大看板 · 访问验证」，密码框 + 解锁按钮，回车提交；输错红框抖动 + 「密码错误」，不清空已输入；输对经 Web Crypto `crypto.subtle.digest('SHA-256')` 比对通过后写 `localStorage.dash_auth`（含签发时间戳）。
+- 有效期 12 小时：`{fp, iat}` 记录，超时失效要求重输。
+- 兜底：无 `crypto.subtle` 的环境回退内置纯 JS 同步 SHA-256（file:// 双击可用；已用 Node 对照系统 crypto 单测 7 组样例全对，含 "7733456" → d9f4268c…）。
+- 全部 8 页均上锁，无免锁例外（含 data-status/index.html）。
+
+### 保护级别诚实披露
+- 本锁为**客户端 deterrent（君子锁）**：挡普通访问者与直接翻页，不挡查看源码者。
+- 源码只存指纹 `SHA-256("7733456") = d9f4268cbdf0de3ff1a268fb337ab3dec607e9f2cfcdeeda4536b0e55064db4a`，**未存明文**（全站源码 grep 无 "7733456" 字样）。
+- 不加盐：输入域固定 7 位数字，盐对抗彩虹表意义有限；**SHA-256(密码) 存于源码，可被彩虹表反查短数字，属可接受风险，用户知情**。
+
+### 实测结果
+**A. 兜底哈希单测（Node 对照系统 crypto，7 组样例全对）**
+"7733456"→目标指纹 ✓、"0"/"1234567"/"0000000"/"9999999"/"password"/"12345678901234567890" 全部与 `crypto.createHash('sha256')` 一致 → 7/7 PASS。
+
+**B. jsdom 全流程 E2E（真实加载 8 页 HTML + 运行 auth.js，30/30 PASS）**
+| 场景 | 结果 |
+|---|---|
+| ① 未输密码看不到任何内容 | PASS ×5 断言：根节点 hidden、遮罩层可见、.wrap hidden、标题「访问验证」正确 |
+| ② 输错有提示（红框抖动+密码错误，不清空） | PASS ×3：msg=「密码错误」、err class 生效、已输入保留 |
+| ③ 输对立即显示内容 | PASS ×4：根节点恢复可见、遮罩移除、localStorage 写入 {fp=指纹, iat=当前}、正文内容可读 |
+| ④ 刷新 12h 内不再要求输 | PASS ×3：1h 前签发→免输直达；13h 前签发→过期重新上锁；指纹不符记录→仍上锁 |
+| ⑤ 8 页全生效 | PASS ×16：8 页 ×（未认证上锁 / 解锁后可见）全对 |
+| 链接自查（href+script src，含锚点目标） | PASS：0 断链；8/8 页均引用 auth.js |
+
+实测环境说明：本机沙箱安全中心拦截真实浏览器启动（Chrome 与 Playwright Chromium 均被拦，按规则未重试），故采用 **jsdom 真实解析 HTML 并执行 auth.js** 的方式做全流程 E2E；其中 localStorage 语义在 jsdom 的 file:// 场景由测试装置 shim 还原（浏览器中走原生 localStorage）。jsdom 无 crypto.subtle，恰好验证了**兜底同步哈希路径**（该路径已另与系统 crypto 单测一致）；Web Crypto 主路径逻辑同一段比对代码（digestHex → FP 比较），分支差异仅在摘要来源。建议用户真机双击任一页面做最后确认（输密码 7733456 应解锁）。

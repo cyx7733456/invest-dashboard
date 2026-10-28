@@ -261,8 +261,10 @@ def page(title, body, depth=0):
         f'<a href="{pre}strategies/index.html">策略档案</a>'
         f'<a href="{pre}data-status/index.html">数据状态</a>')
     footer = f'<footer>数据截至：{BUILD_TS} ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>'
+    # v2.1：全站密码门锁（auth.js 置于 <head> 首位，未认证同步隐藏正文防闪烁）
     return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="{pre}auth.js"></script>
 <title>{title} · 五组投资大看板</title>
 <style>{CSS}</style></head><body>
 <nav class="topnav">{nav}</nav>
