@@ -44,16 +44,16 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
 .riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
 @media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
 </style></head><body>
-<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html">实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
+<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html">实盘推荐</a><a href="../sim/index.html">模拟盘赛马</a><a href="../market/index.html">市场分析</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
 <div class="wrap">
 
 <h1>数据状态</h1>
 <div class="sub">逐项实测于 2026-10-27 深夜；实测依据（文件路径 + 末行/行数 + mtime）见 build_report.md</div>
 <table style="margin-top:14px">
 <tr><th>状态</th><th>数据项</th><th>源文件</th><th>说明</th></tr>
-<tr><td><span class="up">●</span> 绿灯</td><td>canon 主K线（3组 hfq）</td><td class="dim">公共/数据/kline_25y_QD_hfq.csv</td><td style="white-space:normal">实测末行 date=2026-10-27，总数据行 16,230,290（wc -l 16,230,291 含表头），mtime 2026-10-27 19:05。日更正常。</td></tr><tr><td><span class="warn">●</span> 黄灯</td><td>ETF 510300（1组 源）</td><td class="dim">公共/数据/kline_etf_510300_WB.csv</td><td style="white-space:normal">实测末行 date=2026-10-23（应到 10-27）→ 停更，日更修复进行中；mtime 2026-10-25 14:09。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>main_flow 主力资金流</td><td class="dim">—</td><td style="white-space:normal">已冻结（2026-10-27 用户裁定不恢复）。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>实时/分钟价</td><td class="dim">—</td><td style="white-space:normal">无源；模式 = 收盘后决策、次日开盘执行。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>券商委托回报</td><td class="dim">—</td><td style="white-space:normal">无 API，待用户手工导入。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>公告/新闻催化剂</td><td class="dim">—</td><td style="white-space:normal">未采集（探路中）。</td></tr><tr><td><span class="warn">●</span> 黄灯</td><td>canon 2026-09-25 全市场缺日</td><td class="dim">公共/数据/canon_hfq_patch_20260925_QD.csv</td><td style="white-space:normal">已知项：canon 主K线 2026-09-25 全市场缺一日，曾有补丁文件；页内如实保留黄灯提示。</td></tr>
+<tr><td><span class="up">●</span> 绿灯</td><td>canon 主K线（3组 hfq）</td><td class="dim">公共/数据/kline_25y_QD_hfq.csv</td><td style="white-space:normal">实测末行 date=2026-10-27，总数据行 16,230,290（wc -l 16,230,291 含表头），mtime 2026-10-27 19:05。日更正常。</td></tr><tr><td><span class="up">●</span> 绿灯</td><td>ETF 510300（1组 源）</td><td class="dim">公共/数据/kline_etf_510300_WB.csv</td><td style="white-space:normal">实测末行 date=2026-10-27（2026-10-29 复测，3,502 个数据行，16 列齐全）——10-25 时曾停在 10-23，现已恢复日更；市场分析页依赖本文件。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>main_flow 主力资金流</td><td class="dim">—</td><td style="white-space:normal">已冻结（2026-10-27 用户裁定不恢复）。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>实时/分钟价</td><td class="dim">—</td><td style="white-space:normal">无源；模式 = 收盘后决策、次日开盘执行。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>券商委托回报</td><td class="dim">—</td><td style="white-space:normal">无 API，待用户手工导入。</td></tr><tr><td><span class="dim">●</span> 灰灯</td><td>公告/新闻催化剂</td><td class="dim">—</td><td style="white-space:normal">未采集（探路中）。</td></tr><tr><td><span class="warn">●</span> 黄灯</td><td>canon 2026-09-25 全市场缺日</td><td class="dim">公共/数据/canon_hfq_patch_20260925_QD.csv</td><td style="white-space:normal">已知项：canon 主K线 2026-09-25 全市场缺一日，曾有补丁文件；页内如实保留黄灯提示。</td></tr>
 </table>
 
 </div>
-<footer>数据截至：2026-10-29 00:50（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+<footer>数据截至：2026-10-29 15:25（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
 </body></html>
