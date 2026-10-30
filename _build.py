@@ -297,9 +297,11 @@ def pick_table(rows, date, kind):
         tr += f"""<tr><td>{html.escape(r['代码'])}</td><td>{html.escape(r['名称'])}</td>
 <td>{html.escape(r['动作'].split('（')[0])}</td><td><span class="gbadge">{GD.get(r['组'], html.escape(r['组']))}</span>{cons}</td>
 <td>{ind_s}</td><td>{html.escape(r['买入参考价/触发价'])} <span class="dim">({html.escape(r.get('价格口径') or '')})</span></td>
-<td>{sl or '<span class=dim>未上报</span>'}</td><td>{tp or '<span class=dim>未上报</span>'}</td></tr>"""
-    return f"""<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th></tr>{tr}</table>
-<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>"""
+<td>{sl or '<span class=dim>未上报</span>'}</td><td>{tp or '<span class=dim>未上报</span>'}</td>
+<td>{pos_hint(r)}</td></tr>"""
+    return f"""<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th><th>仓位提示</th></tr>{tr}</table>
+<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>
+<div class="sub">{POS_NOTE}</div>"""
 
 def card_html_parts(date):
     with open(f"{CARDS}/daily_live_card_{date}.html") as f:
@@ -311,6 +313,167 @@ def card_html_parts(date):
     body = re.sub(r"(?<![A-Za-z0-9_])(WB|CX|QD|DSK|HRS)(?![A-Za-z0-9_])",
                   lambda m: GD[m.group(1)], body)
     return styles, body
+
+# ---------- 价格真值源：kline_all_bfq（bfq 不复权）+ 推荐跟踪数据 ----------
+# 只保留需要的 symbol（历次卡面代码 + 各组 holdings 代码），流式过滤 388 万行原文件
+KLINE_BFQ = f"{DATA}/kline_all_bfq.csv"
+
+def norm_sym(code):
+    c = str(code or "").strip().lower()
+    if re.match(r"^(sh|sz|bj)\d{6}$", c):
+        return c
+    if re.match(r"^\d{6}$", c):
+        if c.startswith(("43", "83", "87", "92")):
+            return "bj" + c
+        if c[0] in "569":
+            return "sh" + c
+        return "sz" + c
+    return None
+
+_needed = set()
+for _d in CARD_DATES:
+    for _r in card_rows(_d):
+        _s = norm_sym(_r.get("代码"))
+        if _s:
+            _needed.add(_s)
+for _g in GROUPS:
+    for _x in R[_g].get("holdings") or []:
+        _s = norm_sym(_x.get("code"))
+        if _s:
+            _needed.add(_s)
+
+K = {}          # sym -> [(date, close)] 升序
+K_ASOF = None   # 价格源最新交易日
+if os.path.exists(KLINE_BFQ):
+    with open(KLINE_BFQ) as _f:
+        _rd = csv.reader(_f, delimiter="|")
+        next(_rd)
+        for _sym, _dt, _cl in _rd:
+            if _sym in _needed and _dt >= "2026-09-01":
+                K.setdefault(_sym, []).append((_dt, float(_cl)))
+                if K_ASOF is None or _dt > K_ASOF:
+                    K_ASOF = _dt
+for _s in K:
+    K[_s].sort()
+
+def k_close_le(sym, d):
+    """该 sym 在 date ≤ d 的最近一行 (date, close)；取不到 → None。"""
+    best = None
+    for dt, cl in K.get(sym) or []:
+        if dt <= d:
+            best = (dt, cl)
+        else:
+            break
+    return best
+
+def k_last(sym):
+    rows = K.get(sym) or []
+    return rows[-1] if rows else None
+
+# 沪深300（index_hist.csv，sh000300，last 列）——跟踪页基准
+IDX = []
+_p = f"{DATA}/index_hist.csv"
+if os.path.exists(_p):
+    with open(_p, newline="") as _f:
+        for _r in csv.DictReader(_f, delimiter="|"):
+            if _r.get("symbol") == "sh000300":
+                try:
+                    IDX.append((_r["date"], float(_r["last"])))
+                except (TypeError, ValueError):
+                    continue
+    IDX.sort()
+
+def idx_close_le(d):
+    best = None
+    for dt, cl in IDX:
+        if dt <= d:
+            best = (dt, cl)
+        else:
+            break
+    return best
+
+def _fnum(s):
+    try:
+        return float(str(s).strip())
+    except (TypeError, ValueError):
+        return None
+
+# 逐条推荐跟踪行（2026-10-23 起全部历史卡；10-23 卡仅表头无数据行，如实为空）
+TRACK = []
+for _d in CARD_DATES:
+    for _r in card_rows(_d):
+        _act = _r.get("动作") or ""
+        _sym = norm_sym(_r.get("代码"))
+        _basis = (_r.get("价格口径") or "").strip()
+        rec = {"d": _d, "g": _r.get("组") or "", "code": _r.get("代码") or "",
+               "name": _r.get("名称") or "", "act": _act.split("（")[0],
+               "basis": _basis, "ref": _r.get("买入参考价/触发价") or "",
+               "tp": _r.get("止盈价/锚") or "", "sl": _r.get("止损价/锚") or "",
+               "entry": None, "entry_d": None, "last": None, "last_d": None,
+               "ret": None, "mdd": None, "days": None, "status": None, "status_d": None}
+        _e = k_close_le(_sym, _d) if _sym else None
+        _lt = k_last(_sym) if _sym else None
+        if _e and _lt:
+            rec["entry"], rec["entry_d"] = _e[1], _e[0]
+            rec["last"], rec["last_d"] = _lt[1], _lt[0]
+            rec["ret"] = _lt[1] / _e[1] - 1
+            _mids = [(dt, cl) for dt, cl in K.get(_sym) or [] if _d < dt <= _lt[0]]
+            rec["days"] = len(_mids)
+            if _mids:
+                rec["mdd"] = min(cl for _, cl in _mids) / _e[1] - 1
+            else:
+                rec["mdd"] = 0.0
+        # 状态判定：仅对卡面价格为裸价（bfq）口径且止盈/止损为数值的行，用 bfq 收盘价对比（盘中触发不计）
+        _tp, _sl = _fnum(rec["tp"]), _fnum(rec["sl"])
+        if _basis == "裸价" and _tp is not None and _sl is not None and _sym:
+            rec["status"] = "未触发"
+            for dt, cl in K.get(_sym) or []:
+                if dt <= _d:
+                    continue
+                if cl >= _tp:
+                    rec["status"], rec["status_d"] = "已触止盈", dt
+                    break
+                if cl <= _sl:
+                    rec["status"], rec["status_d"] = "已触止损", dt
+                    break
+            if rec["status"] == "未触发" and rec["days"] == 0:
+                rec["status"] = "未触发（尚无后续交易日）"
+        elif _basis != "裸价":
+            rec["status"] = "不判定（卡面价为复权口径，与 bfq 不可比）"
+        else:
+            rec["status"] = "未判定（止盈/止损未上报或非数值）"
+        TRACK.append(rec)
+
+# 买入档等权组合 vs 沪深300（同窗匹配：每票自其推荐日 bfq 收盘买入持有至最新；基准取同窗指数收益均值）
+_buy_recs = [r for r in TRACK if r["act"] == "买入" and r["ret"] is not None]
+COMBO = {"n": len(_buy_recs), "ret": None, "bench": None, "excess": None,
+         "n_track": len(TRACK), "n_noprice": sum(1 for r in TRACK if r["ret"] is None)}
+IDX_ASOF = idx_close_le(K_ASOF)[0] if (IDX and K_ASOF and idx_close_le(K_ASOF)) else None
+if _buy_recs and IDX:
+    COMBO["ret"] = sum(r["ret"] for r in _buy_recs) / len(_buy_recs)
+    _brets = []
+    for r in _buy_recs:
+        _i0 = idx_close_le(r["entry_d"])
+        _i1 = idx_close_le(K_ASOF)
+        if _i0 and _i1:
+            _brets.append(_i1[1] / _i0[1] - 1)
+    if _brets:
+        COMBO["bench"] = sum(_brets) / len(_brets)
+        COMBO["excess"] = COMBO["ret"] - COMBO["bench"]
+
+# ---------- 仓位提示（模拟盘统一口径 v2） ----------
+POS_NOTE = ("仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；"
+            "用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。")
+
+def pos_hint(r):
+    act = r.get("动作") or ""
+    if act.startswith("买入"):
+        return "4%（模拟盘等权）"
+    if act.startswith("观察"):
+        return "0%（观察仓）"
+    if act.startswith("固定腿"):
+        return "固定腿（非共识非推荐），模拟盘 ETF 腿仓位待引擎扩池"
+    return "—"
 
 # ---------- 通用骨架 ----------
 CSS = """
@@ -361,6 +524,7 @@ def page(title, body, depth=0):
     nav = (
         f'<a href="{pre}index.html"{" class=on" if title == "首页" else ""}>首页</a>'
         f'<a href="{pre}live/index.html"{" class=on" if title in ("实盘推荐", "实盘详情") else ""}>实盘推荐</a>'
+        f'<a href="{pre}track/index.html"{" class=on" if title == "推荐跟踪" else ""}>推荐跟踪</a>'
         f'<a href="{pre}sim/index.html">模拟盘赛马</a>'
         f'<a href="{pre}market/index.html"{" class=on" if title == "市场分析" else ""}>市场分析</a>'
         f'<a href="{pre}strategies/index.html">策略档案</a>'
@@ -421,6 +585,7 @@ for i, r in enumerate(TOP3):
 <b class="up">{html.escape(r['动作'].split('（')[0])}</b> <span class="gbadge">{GD.get(r['组'], html.escape(r['组']))}</span>
 <span class="dim">共识 {html.escape(r.get('共识票数') or '—')}/5 组</span><br>
 <span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
+<span class="dim">仓位提示 {pos_hint(r)}</span><br>
 <span class="dim">有效期 {r['有效期(天)']} 天 ｜ 意向非成交</span></div>"""
 
 nav_cards = ""
@@ -433,6 +598,7 @@ for g in GROUPS:
 
 entries = [
     ("实盘推荐专区", "live/index.html", "每日实盘推荐卡：最新摘要 + 历史日期导航"),
+    ("推荐跟踪", "track/index.html", "历次推荐逐票跟踪：收益/回撤/止盈止损触发状态（bfq 口径）"),
     ("模拟盘赛马", "sim/index.html", "五组净值对比曲线、日胜率与当前持仓明细"),
     ("市场分析", "market/index.html", "A股当前状态分位 · 历史相似段扫描 · 切换信号清单"),
     ("策略档案", "strategies/index.html", "五组策略卡片墙（版本待契约回填）"),
@@ -497,9 +663,30 @@ for d in reversed(CARD_DATES):
 <span class="dim">{cnt}</span><br><span class="dim">风向：看空 {wind.split(" · ")[0].split()[-1]} / 中性 {wind.split(" · ")[1].split()[-1]} / 看多 {wind.split(" · ")[2].split()[-1]}</span></a>"""
 
 lf = card_facts(LATEST)
+# C2：live 顶部三小卡（今日推荐数 / 各组 nav / 追踪组合累计收益）
+nav_mini = "<br>".join(
+    f'<span style="font-size:12px">{GD[g]} {M[g]["act"]:.4f} {pct(M[g]["dchg"])}</span>'
+    for g in GROUPS)
+combo_disp = pct(COMBO["ret"]) if COMBO["ret"] is not None else '<span class="dim">取不到</span>'
+live_kpis = f"""
+<div class="grid g3" style="margin-top:14px">
+  <div class="card"><span class="lab">今日推荐（{LATEST} 卡）</span>
+<b>{lf['n_buy'] or '—'}</b> <span class="dim">只共识买入</span><br>
+<span class="dim">观察 {lf['n_watch'] or '—'} 只 ｜ 均为意向非成交</span><br>
+<span class="dim">仓位提示：买入档=模拟盘等权 4%（口径见下）</span></div>
+  <div class="card"><span class="lab">各组模拟净值（最新 act_nav + 当日涨跌）</span>
+{nav_mini}<br><span class="dim">详见 <a href="../sim/index.html">模拟盘赛马</a></span></div>
+  <div class="card"><span class="lab">追踪组合累计收益（历次买入档等权 · bfq 口径）</span>
+<b>{combo_disp}</b><br>
+<span class="dim">同期沪深300 {pct(COMBO['bench']) if COMBO['bench'] is not None else '取不到'} ｜ 超额 {pct(COMBO['excess']) if COMBO['excess'] is not None else '取不到'}</span><br>
+<span class="dim">自各票推荐日 bfq 收盘买入持有至 {K_ASOF or '取不到'} ｜ 详见 <a href="../track/index.html">推荐跟踪</a></span></div>
+</div>
+<div class="sub" style="margin-top:6px">{POS_NOTE}｜追踪组合为纸面跟踪（假想按推荐日 bfq 收盘买入），非各组模拟盘实际持仓盈亏。</div>
+"""
 body = f"""
 <h1>实盘推荐专区</h1>
 <div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；触发价为裸价/实际价（2026-10-29 修复口径），旧卡以卡面「价格口径」列逐票标注为准；价格列可能为「本组未设」（3组 无日内价源）</div>
+{live_kpis}
 <div class="card" style="margin-top:14px">
   <span class="lab">最新一日 · {LATEST}（生成 {lf['gen'] or '未上报'}）</span>
   <b style="font-size:24px">共识买入 {lf['n_buy']} 只</b> <span class="dim">｜ 观察 {lf['n_watch']} 只</span><br>
@@ -532,6 +719,17 @@ for d in CARD_DATES:
     d_buy_cnt = f'{dcounts["看空"]} 看空 / {dcounts["中性"]} 中性 / {dcounts["看多"]} 看多'
     buy_tbl = pick_table(card_r, d, "买入")
     watch_tbl = pick_table(card_r, d, "观察")
+    fix_rows = [r for r in card_r if (r.get("动作") or "").startswith("固定腿")]
+    if fix_rows:
+        fx = ""
+        for r in fix_rows:
+            fx += (f'<tr><td>{html.escape(r["代码"])}</td><td>{html.escape(r["名称"])}</td>'
+                   f'<td>{html.escape(r["买入参考价/触发价"])} <span class="dim">({html.escape(r.get("价格口径") or "")})</span></td>'
+                   f'<td>{pos_hint(r)}</td></tr>')
+        fix_tbl = (f'<h2>ETF 固定腿（非共识非推荐，每日无条件展示）</h2><table>'
+                   f'<tr><th>代码</th><th>名称</th><th>触发价</th><th>仓位提示</th></tr>{fx}</table>')
+    else:
+        fix_tbl = ""
     detail_rows = ""
     for r in drows:
         meta_bits = [f"报告日 {d}", r.get("rd_disp") or "读数日 未提供"]
@@ -567,6 +765,7 @@ for d in CARD_DATES:
 
 <h2>观察票（未达共识门槛 · 非推荐）</h2>
 {watch_tbl}
+{fix_tbl}
 
 <details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
 {detail_rows}
@@ -628,6 +827,67 @@ def hold_table(g):
 
 btns = "".join(f'<button id="btn_{g}" onclick="showH(\'{g}\')"{" class=on" if g == "WB" else ""}>{GD[g]}（{len(R[g]["holdings"])} 只）</button>' for g in GROUPS)
 
+# ---------- C1：逐票盈利（bfq 口径，仅 entry 与 bfq 可比的组才算，拿不准宁可不算） ----------
+def entry_comparable(g):
+    """entry 与 bfq 价带吻合率 ≥80% 才认定口径可信可比（bfq 不复权裸价）。"""
+    h = R[g].get("holdings") or []
+    hit = tot = 0
+    for x in h:
+        sym = norm_sym(x.get("code"))
+        e = x.get("entry")
+        rows = K.get(sym)
+        if not rows or e is None:
+            continue
+        tot += 1
+        cl = [c for _, c in rows]
+        if min(cl) * 0.98 <= e <= max(cl) * 1.02:
+            hit += 1
+    return (tot > 0 and hit / tot >= 0.8), hit, tot
+
+PNL_OK, PNL_HIT = {}, {}
+for _g in GROUPS:
+    _ok, _hit, _tot = entry_comparable(_g)
+    PNL_OK[_g] = _ok
+    PNL_HIT[_g] = (_hit, _tot)
+
+def pnl_table(g):
+    h = R[g].get("holdings") or []
+    tr = ""
+    for x in h:
+        sym = norm_sym(x.get("code"))
+        e = x.get("entry")
+        lt = k_last(sym) if sym else None
+        if e is None or lt is None:
+            fp = '<span class="dim">取不到（entry 空或 bfq 无该票行）</span>'
+            last_s = f"{lt[1]:.4g}（{lt[0]}）" if lt else '<span class="dim">取不到</span>'
+            e_s = f"{e:.4g}" if isinstance(e, (int, float)) else html.escape(str(e or "—"))
+        else:
+            e_s = f"{e:.4g}"
+            last_s = f"{lt[1]:.4g}（{lt[0]}）"
+            fp = pct(lt[1] / e - 1)
+        tr += (f"<tr><td>{html.escape(str(x.get('code') or ''))}</td>"
+               f"<td>{html.escape(str(x.get('name') or ''))}</td>"
+               f"<td>{e_s}</td><td>{last_s}</td><td>{fp}</td></tr>")
+    return (f"<table><tr><th>代码</th><th>名称</th><th>entry（组内自报）</th>"
+            f"<th>最新价（bfq，日期）</th><th>浮盈%（bfq 口径）</th></tr>{tr}</table>")
+
+pnl_blocks = ""
+for g in GROUPS:
+    hit, tot = PNL_HIT[g]
+    if PNL_OK[g]:
+        pnl_blocks += (f'<div class="holdsec{" on" if g == "WB" else ""}" id="pnl_{g}">'
+                       f'<div class="sub">entry 口径实测：与 bfq 价带吻合 {hit}/{tot} → 判定为可比，逐票浮盈如下计算'
+                       f'（浮盈% = bfq 最新收盘 / entry − 1）。若持仓期内个股发生除权除息，bfq 口径浮盈存在跳变误差'
+                       f'（看板无除权因子数据，不修正，如实提示）。</div>{pnl_table(g)}</div>')
+    else:
+        reason = {"WB": "entry 为后复权口径", "QD": "entry 为 canon 后复权（计价口径）",
+                  "DSK": "entry 口径混杂（部分行为价与最新价同源、部分票不可比）"}.get(g, "entry 口径与 bfq 不一致")
+        pnl_blocks += (f'<div class="holdsec" id="pnl_{g}">'
+                       f'<div class="sub">该组 entry 口径与 bfq 不可比（{reason}；实测 entry 与 bfq 价带吻合仅 {hit}/{tot}），'
+                       f'逐票盈亏不展示。请看上方该组持仓明细的自报 unreal_pct（复权口径）与组内 nav 曲线（页首图），不做跨口径硬算。</div></div>')
+
+pnl_btns = "".join(f'<button id="pbtn_{g}" onclick="showP(\'{g}\')"{" class=on" if g == "WB" else ""}>{GD[g]}</button>' for g in GROUPS)
+
 body = f"""
 <h1>模拟盘赛马</h1>
 <div class="sub">数据源：公共/数据/simulated_nav_&lt;组&gt;.csv ｜ 指标口径：日胜率 = act_nav 日收益&gt;0 的交易日 ÷ 总交易日（各样本 ≥20 天）；区间累计收益 = 末值/首值 − 1</div>
@@ -643,12 +903,19 @@ body = f"""
 <h2>当前持仓明细（取各组最新上报件 holdings）</h2>
 <div class="btns">{btns}</div>
 {''.join(hold_table(g) for g in GROUPS)}
+<h2>逐票盈利情况（bfq 口径 · 仅 entry 可信组）</h2>
+<div class="sub">判定方法：将各组上报 entry 与 kline_all_bfq（bfq 不复权裸价）近一月价带比对，吻合率 ≥80% 才认定为可比组，只对可比组计算逐票浮盈；拿不准的组宁可不算、如实标注。下方按组切换。</div>
+<div class="btns">{pnl_btns}</div>
+{pnl_blocks}
 <script>
+const GROUPS = {json.dumps(GROUPS)};
 function showH(g) {{
-  document.querySelectorAll('.holdsec').forEach(e => e.classList.remove('on'));
-  document.querySelectorAll('.btns button').forEach(e => e.classList.remove('on'));
-  document.getElementById('hold_' + g).classList.add('on');
-  document.getElementById('btn_' + g).classList.add('on');
+  GROUPS.forEach(x => {{ const e = document.getElementById('hold_' + x); if (e) e.classList.toggle('on', x === g); }});
+  document.querySelectorAll('.btns button').forEach(e => {{ if (e.id.startsWith('btn_')) e.classList.toggle('on', e.id === 'btn_' + g); }});
+}}
+function showP(g) {{
+  GROUPS.forEach(x => {{ const e = document.getElementById('pnl_' + x); if (e) e.classList.toggle('on', x === g); }});
+  document.querySelectorAll('.btns button').forEach(e => {{ if (e.id.startsWith('pbtn_')) e.classList.toggle('on', e.id === 'pbtn_' + g); }});
 }}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -676,6 +943,71 @@ new Chart(document.getElementById('navchart'), {{
 </script>
 """
 open(f"{OUT}/sim/index.html", "w").write(page("模拟盘赛马", body, depth=1))
+
+# ================= 推荐跟踪页（track/index.html，bfq 口径） =================
+os.makedirs(f"{OUT}/track", exist_ok=True)
+_dedup = set()
+trows = ""
+for r in sorted(TRACK, key=lambda x: (x["d"], x["g"], x["code"]), reverse=True):
+    key = (r["d"], r["g"], r["code"])
+    if key in _dedup:
+        continue
+    _dedup.add(key)
+    if r["ret"] is None:
+        ret_s = '<span class="dim">取不到（bfq 无该票行）</span>'
+        mdd_s = '<span class="dim">—</span>'
+        days_s = '<span class="dim">—</span>'
+        last_s = '<span class="dim">取不到</span>'
+        entry_s = '<span class="dim">取不到</span>'
+    else:
+        ret_s = pct(r["ret"])
+        mdd_s = f'<span class="dn">{r["mdd"]*100:.2f}%</span>'
+        days_s = str(r["days"])
+        last_s = f'{r["last"]:.4g}（{r["last_d"]}）'
+        entry_s = f'{r["entry"]:.4g}（{r["entry_d"]}）'
+    if r["status_d"]:
+        st_s = f'{r["status"]}（{r["status_d"]}）'
+    else:
+        st_s = r["status"] or "—"
+    st_cls = "up" if r["status"] and r["status"].startswith("已触止盈") else "dn" if r["status"] and r["status"].startswith("已触止损") else "dim"
+    tp_s = r["tp"] if r["tp"] else '<span class="dim">未上报</span>'
+    sl_s = r["sl"] if r["sl"] else '<span class="dim">未上报</span>'
+    trows += (f'<tr><td>{r["d"]}</td><td><span class="gbadge">{GD.get(r["g"], html.escape(r["g"]))}</span></td>'
+              f'<td>{html.escape(r["code"])}</td><td>{html.escape(r["name"])}</td><td>{html.escape(r["act"])}</td>'
+              f'<td>{html.escape(r["ref"] or "—")} <span class="dim">({html.escape(r["basis"])})</span></td>'
+              f'<td>{entry_s}</td><td>{last_s}</td><td>{ret_s}</td><td>{mdd_s}</td><td>{days_s}</td>'
+              f'<td>{tp_s}</td><td>{sl_s}</td><td><span class="{st_cls}">{html.escape(st_s)}</span></td></tr>')
+
+combo_cards = f"""
+<div class="grid g6" style="margin-top:12px">
+  <div class="card"><span class="lab">跟踪推荐条目（历次卡面逐条）</span><b>{COMBO["n_track"]}</b><br>
+<span class="dim">其中买入档 {sum(1 for r in TRACK if r["act"] == "买入")} 条</span></div>
+  <div class="card"><span class="lab">买入档等权组合累计收益</span><b>{pct(COMBO["ret"]) if COMBO["ret"] is not None else "取不到"}</b><br>
+<span class="dim">{COMBO["n"]} 条可计价票等权均值</span></div>
+  <div class="card"><span class="lab">同期沪深300（同窗匹配）</span><b>{pct(COMBO["bench"]) if COMBO["bench"] is not None else "取不到"}</b><br>
+<span class="dim">每票按其推荐日→最新的同窗指数收益均值</span></div>
+  <div class="card"><span class="lab">组合超额</span><b>{pct(COMBO["excess"]) if COMBO["excess"] is not None else "取不到"}</b><br>
+<span class="dim">组合 − 基准（算术差）</span></div>
+  <div class="card"><span class="lab">价格源截至</span><b style="font-size:16px">{K_ASOF or "取不到"}</b><br>
+<span class="dim">kline_all_bfq 日更 16:40 后，当日收盘未入库前止于上一交易日</span></div>
+  <div class="card"><span class="lab">无价源条目</span><b>{COMBO["n_noprice"]}</b><br>
+<span class="dim">如 ETF 固定腿（kline_all_bfq 无 ETF），如实不计</span></div>
+</div>"""
+
+body = f"""
+<h1>推荐跟踪</h1>
+<div class="sub">覆盖 {CARD_DATES[0]} ~ {CARD_DATES[-1]} 历史每日实盘卡的逐条推荐（买入/观察/固定腿全列，2026-10-23 卡仅表头无逐票行，如实为空）。</div>
+<div class="riskfoot">📌 页头声明：跟踪收益 = 假想在推荐日按 <b>bfq 收盘价</b>买入的纸面收益（bfq 对 bfq，不复权），<b>非各组模拟盘实际持仓盈亏</b>，亦非用户真实账户盈亏。卡面参考价列为卡面原始价（旧卡为 hfq/qfq 复权口径，仅展示、不用于收益计算——收益基准统一改用推荐日 bfq 收盘价，逐行列出）。状态判定：以 bfq <b>收盘价</b>对比卡面止盈/止损，盘中触发不计；仅对卡面价格为裸价（bfq）口径的行判定，复权口径行如实标「不判定」。</div>
+{combo_cards}
+<h2>逐票跟踪表</h2>
+<table>
+<tr><th>推荐日</th><th>来源组</th><th>代码</th><th>名称</th><th>档位</th><th>卡面参考价（口径）</th><th>收益基准价（bfq，日期）</th><th>最新价（bfq，日期）</th><th>自推荐日起收益%</th><th>最大回撤%</th><th>持仓交易日</th><th>止盈价</th><th>止损价</th><th>当前状态</th></tr>
+{trows}
+</table>
+<div class="sub">最大回撤% = 推荐日之后至最新 bfq 最低收盘 / 推荐日 bfq 收盘 − 1（仅收盘口径，盘中低点不计）。持仓交易日 = 推荐日之后至价格源最新的 bfq 交易日数（10-29 卡为 0 属正常，尚无后续交易日）。收益基准价 = 推荐日当日 bfq 收盘（当日停牌等取不到时取 ≤ 推荐日最近一行）。组合等权口径：每票 1/N 买入持有至最新，各票入场日不同；基准为同窗匹配的沪深300 收益均值（index_hist.csv sh000300，截至 {IDX_ASOF or "取不到"}，与价格源对齐）。</div>
+<div class="sub">{POS_NOTE}</div>
+"""
+open(f"{OUT}/track/index.html", "w").write(page("推荐跟踪", body, depth=1))
 
 STRAT = {
  "WB": ("V9 月度调仓：反转 + 质量分打分，V6 现金滤镜；持仓 25 只，gate_id=V9，tier=满仓；止盈 +15% / 止损 −10%（自今日收盘价起算）。",
