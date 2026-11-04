@@ -144,6 +144,38 @@ def _rule_notes(mv):
         full = str(rule)
     return "；".join(bits), full
 
+# ---------- 风向预测命中率（2026-11-04 WB 接入；源：score_market_view_WB.py 每日 18:40 产出）----------
+def _mv_scores():
+    """读 公共/数据/market_view_score_WB.csv（打分器预注册口径）。
+    返回 {组: {"次日": (方向n,命中,率str), "5日": (...), "中性次日": (n,合格), "中性5日": (n,合格),
+    "超额次日": pp串或None, "超额5日": ..., "source": str或None, "stale": 数据日或None}}；
+    文件缺 → ({}, None, None)。v2 增强（2026-11-04）：超额/stance_source/stale_basis 为新增列，
+    CSV 无该列时取不到 → None，徽章维持现状。"""
+    p = os.path.join(DATA, "market_view_score_WB.csv")
+    out, truth, mtime = {}, None, None
+    if not os.path.exists(p):
+        return out, None, None
+    mtime = _dt.fromtimestamp(os.path.getmtime(p)).strftime("%Y-%m-%d %H:%M")
+    with open(p, newline="") as f:
+        for r in csv.DictReader(f, delimiter="|"):
+            g = r["group"]
+            d = out.setdefault(g, {})
+            rate = None if r["dir_hit_rate"] in ("—", "") else r["dir_hit_rate"]
+            d[r["window"]] = (int(r["n_directional"]), int(r["hits"]), rate)
+            d["中性" + r["window"]] = (int(r["n_neutral"]), int(r["neutral_ok"]))
+            ex = r.get("excess_5d" if r["window"] == "5日" else "excess_next")
+            d["超额" + r["window"]] = ex if ex not in (None, "", "—") else None
+            if r.get("stance_source"):
+                d["source"] = r["stance_source"]
+            sb = r.get("stale_basis")
+            if sb:
+                d["stale"] = sb
+            if truth is None:
+                truth = r.get("truth")
+    return out, truth, mtime
+
+MV_SCORES, MV_TRUTH, MV_MTIME = _mv_scores()
+
 def compass(date):
     """返回 (counts, rows)。无观点 = conf==0（本组自述无观点）；缺件 = 未上报。
     v2.2：每行附 读数日、当日生成/事后补跑（generated_at vs date）、结构化判据、旧口径标记。"""
@@ -233,15 +265,42 @@ def compass_html(date):
         if r.get("legacy"):
             meta_bits.append("旧口径：无判据（脚本字面量，不可反推）")
         meta = html.escape("｜".join(meta_bits))
+        # 风向预测命中率徽章（2026-11-04 接入；取不到=打分件未产出/该组缺）
+        # v2 增强（2026-11-04）：tooltip 追加超额命中率；CSV 有 stale_basis 时追加 ⚠数据陈旧标记
+        sc = MV_SCORES.get(r["g"])
+        if sc:
+            def _fmt_sc(key):
+                n, h, rate = sc.get(key, (0, 0, None))
+                if n == 0:
+                    nn, ok = sc.get("中性" + key, (0, 0))
+                    if nn:
+                        return f"{key}中性合格 {ok}/{nn}"
+                    return f"{key}方向0次"
+                return f"{key} {h}/{n}={rate}"
+            _title = (f'风向预测回算（口径预注册，禁事后改）：真值 {MV_TRUTH} 收盘；'
+                      f'看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；'
+                      f'中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。'
+                      f'样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime {MV_MTIME}')
+            _ex_bits = [f'{k}超额{sc["超额" + k]}pp' for k in ("次日", "5日") if sc.get("超额" + k)]
+            if _ex_bits:
+                _title += f'；超额命中率（v2 增强：方向命中率 − 常量同向基线，恒定 stance 组恒 0）：{" / ".join(_ex_bits)}'
+            if sc.get("stale"):
+                _title += f'；⚠数据陈旧：basis 解析数据日 {sc["stale"]} 早于预测日 3 个自然日以上'
+            score_chip = f'<span class="tag" title="{_title}">🎯 {_fmt_sc("5日")} · {_fmt_sc("次日")}</span>'
+            if sc.get("stale"):
+                score_chip += '<span class="tag" style="color:var(--warn);border-color:var(--warn)" ' \
+                              f'title="数据日检查（v2 增强）：basis 解析数据日 {sc["stale"]} 早于预测日 3 个自然日以上">⚠数据陈旧</span>'
+        else:
+            score_chip = '<span class="dim" style="font-size:11px">🎯 命中率 取不到</span>'
         grows += f"""<div class="grow"><span class="gbadge">{GD[r['g']]}</span>
 <span class="stag {stag_cls[st]}">{st}{tag_note}{human_note}</span>
-{conf_bar}{cmp_tag}<span class="dim" style="font-size:11px">{meta}</span><span class="gbasis">{short}</span></div>"""
+{conf_bar}{cmp_tag}{score_chip}<span class="dim" style="font-size:11px">{meta}</span><span class="gbasis">{short}</span></div>"""
     return f"""
 <div class="compass">
   <div class="cbarwrap">{segs}</div>
   <div class="cln">{cnt_bits}</div>
   {grows}
-  <div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型（5组 2026-10-28 确认为诚实占位）；未上报 = 当日上报件缺件（出件失败≠无观点，两格分开，不把故障读成态度）。以下为各组当前看法（描述），非收益预测；各组样本池/阈值/confidence 定义不同，不可直接横向比大小。「有结构化判据/仅文字 basis」为可比性标记。读数日＝判据数据实际截止日，报告日≠读数日；「当日生成/事后补跑」由件内 generated_at 与 date 比对得出，事后补跑件 PIT 完整性可能存疑。各组 stance 历史命中率列尚未建立（需回算历史上报件，取不到，不编造）。3组 2026-10-26 及更早旧件为旧口径（stance 为脚本字面量、无结构化判据），已逐格如实标注。</div>
+  <div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型（5组 2026-10-28 确认为诚实占位）；未上报 = 当日上报件缺件（出件失败≠无观点，两格分开，不把故障读成态度）。以下为各组当前看法（描述），非收益预测；各组样本池/阈值/confidence 定义不同，不可直接横向比大小。「有结构化判据/仅文字 basis」为可比性标记。读数日＝判据数据实际截止日，报告日≠读数日；「当日生成/事后补跑」由件内 generated_at 与 date 比对得出，事后补跑件 PIT 完整性可能存疑。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。3组 2026-10-26 及更早旧件为旧口径（stance 为脚本字面量、无结构化判据），已逐格如实标注。</div>
 </div>"""
 
 # ---------- 实盘卡数据 ----------
@@ -611,10 +670,31 @@ entry_html = "".join(f'<a class="entry" href="{p}"><b>{t}</b><br><span class="di
 seg_style = {"看多": "var(--up)", "看空": "var(--dn)", "中性": "#6e7681", "无观点": "#30363d", "未上报": "#21262d"}
 home_segs = "".join(f'<div class="cseg" style="width:{c/5*100:.0f}%;background:{seg_style[k]}" title="{k} {c} 组">{c if c else ""}</div>'
                     for k, c in counts.items() if c)
+def _score_short(g):
+    """首页紧凑版分数：'5日 5/6=83.3% · 次日 4/8=50.0%'；无方向预测时显示中性合格/方向0次。
+    v2 增强（2026-11-04）：CSV 有超额列时追加 '超额X.Xpp'（5日优先，无则次日）；有 stale_basis 追加 ⚠陈旧。"""
+    sc = MV_SCORES.get(g)
+    if not sc:
+        return "🎯 取不到"
+    def f(key):
+        n, h, rate = sc.get(key, (0, 0, None))
+        if n == 0:
+            nn, ok = sc.get("中性" + key, (0, 0))
+            return f"{key}中性 {ok}/{nn}" if nn else f"{key}方向0次"
+        return f"{key} {h}/{n}={rate}"
+    s = f'🎯 {f("5日")} · {f("次日")}'
+    ex = sc.get("超额5日") or sc.get("超额次日")
+    if ex:
+        s += f" · 超额{ex}pp"
+    if sc.get("stale"):
+        s += " ⚠陈旧"
+    return s
+
 home_rows = "".join(
     f'<div class="grow"><span class="gbadge">{GD[r["g"]]}</span>'
     f'<span class="stag {"up" if r["state"]=="看多" else "dn" if r["state"]=="看空" else "dim"}{" warn" if r["state"]=="未上报" else ""}">{r["state"]}</span>'
     f'<span class="dim">conf {r["conf"] if r["conf"] is not None else "—"}</span>'
+    f'<span class="tag">{_score_short(r["g"])}</span>'
     f'<span class="dim" style="font-size:11px">{r["rd_disp"]}</span>'
     f'<span class="gbasis">{html.escape(str(r["basis"])[:60])}{"…" if len(str(r["basis"]))>60 else ""}</span></div>'
     for r in crows)
@@ -631,7 +711,7 @@ body = f"""
   <div class="cln"><span class="dn">看空 {counts["看空"]} 组</span> · <span class="dim">中性 {counts["中性"]} 组</span> · <span class="up">看多 {counts["看多"]} 组</span> · <span class="dim">无观点 {counts["无观点"]} 组</span> · <span class="warn">未上报 {counts["未上报"]} 组</span></div>
   {home_rows}
   <div class="sub" style="margin-top:6px">{sum_line}</div>
-  <div class="sub" style="margin-top:4px">以下为各组当前看法（描述），非收益预测，不构成共识票；各组样本池/阈值/confidence 定义不同，不可直接横向比大小（5组/3组 2026-10-28 函）。读数日＝判据数据实际截止日，报告日≠读数日。各组 stance 历史命中率列尚未建立（需回算历史上报件，取不到，不编造）。</div>
+  <div class="sub" style="margin-top:4px">以下为各组当前看法（描述），非收益预测，不构成共识票；各组样本池/阈值/confidence 定义不同，不可直接横向比大小（5组/3组 2026-10-28 函）。读数日＝判据数据实际截止日，报告日≠读数日。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。</div>
 </div>
 <div style="margin-top:8px"><a class="bigbtn" href="live/{LATEST}.html#compass">查看详情（当日风向标区）</a></div>
 <h2>当日实盘推荐 Top3（{LATEST} 卡 · 行业共识 ≥2 组判据）</h2>
@@ -685,7 +765,7 @@ live_kpis = f"""
 """
 body = f"""
 <h1>实盘推荐专区</h1>
-<div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；触发价为裸价/实际价（2026-10-29 修复口径），旧卡以卡面「价格口径」列逐票标注为准；价格列可能为「本组未设」（3组 无日内价源）</div>
+<div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；触发价为裸价/实际价（2026-10-29 修复口径），旧卡以卡面「价格口径」列逐票标注为准；价格列可能为「本组未设」（该组策略口径不产价位，诚实标注；2026-11-04 起 3组已确认有日内价源，此标注随各组件内声明动态）</div>
 {live_kpis}
 <div class="card" style="margin-top:14px">
   <span class="lab">最新一日 · {LATEST}（生成 {lf['gen'] or '未上报'}）</span>
