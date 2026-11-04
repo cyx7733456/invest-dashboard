@@ -36,6 +36,28 @@ GROUPS = ["WB", "CX", "QD", "DSK", "HRS"]
 # 文件名/HTML id/图表数据键仍用内部代码，不影响任何逻辑）
 GD = {"WB": "1组", "CX": "2组", "QD": "3组", "DSK": "4组", "HRS": "5组"}
 
+
+def clip_note(text, limit=60):
+    """2026-11-04 QD 回函 B1：按句读点截断，不切词中；历史件不回改。
+    ≤limit 原样返回（不加省略号）；超宽时优先在 ≤limit 范围内最后一个句读点
+    （。；!?.;）处断开并保留该标点；断不到（首句就超长）才 text[:limit] + "…"。
+    None / 非 str 一律安全处理，绝不抛异常；limit<=0 返回空串（防负数切片）。"""
+    s = "" if text is None else (text if isinstance(text, str) else str(text))
+    if limit <= 0:
+        return ""
+    if len(s) <= limit:
+        return s
+    win = s[:limit]
+    cut = -1
+    for ch in ("。", "；", "!", "?", ".", ";"):
+        p = win.rfind(ch)
+        if p > cut:
+            cut = p
+    if cut >= 0:
+        return win[:cut + 1]
+    return win + "…"
+
+
 def disp_groups(s):
     """把卡面来源/缺失串里的组代码替换为显示名，如 'CX,DSK,WB' → '2组、4组、1组'。"""
     if not s:
@@ -252,7 +274,8 @@ def compass_html(date):
         conf_bar = (f'<span class="cbar"><i style="width:{min(conf,1)*100:.0f}%"></i></span>'
                     f'<span class="dim">{conf:.2f}</span>') if isinstance(conf, (int, float)) else '<span class="dim">—</span>'
         b = html.escape(r["basis"])
-        short = b if len(b) <= 60 else b[:60] + "…"
+        # 2026-11-04 QD 回函 B1：按句读点截断，不切词中；历史件不回改（b 已 html.escape，中文标点不受影响）。
+        short = clip_note(b, 60)
         tag_note = ' <span class="dim">（本组无择时模型）</span>' if r["no_timing"] else ""
         human_note = ' <span class="dim">[人工]</span>' if r.get("human") is True else ""
         # 可比性标记（3组 建议1：原始值逐字展示 + 可比性标记，不做共识票）
@@ -690,13 +713,14 @@ def _score_short(g):
         s += " ⚠陈旧"
     return s
 
+# 2026-11-04 QD 回函 B1：按句读点截断，不切词中；先截原文再 escape，不再另加「…」（clip_note 自带）；历史件不回改。
 home_rows = "".join(
     f'<div class="grow"><span class="gbadge">{GD[r["g"]]}</span>'
     f'<span class="stag {"up" if r["state"]=="看多" else "dn" if r["state"]=="看空" else "dim"}{" warn" if r["state"]=="未上报" else ""}">{r["state"]}</span>'
     f'<span class="dim">conf {r["conf"] if r["conf"] is not None else "—"}</span>'
     f'<span class="tag">{_score_short(r["g"])}</span>'
     f'<span class="dim" style="font-size:11px">{r["rd_disp"]}</span>'
-    f'<span class="gbasis">{html.escape(str(r["basis"])[:60])}{"…" if len(str(r["basis"]))>60 else ""}</span></div>'
+    f'<span class="gbasis">{html.escape(clip_note(str(r["basis"]), 60))}</span></div>'
     for r in crows)
 
 body = f"""
