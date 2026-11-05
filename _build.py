@@ -95,12 +95,21 @@ def load_report(g, date):
 
 # ---------- 净值 ----------
 navs = {}
+REF_NAV = {}   # g -> (最新日期, ref_nav) 或 None（2026-11-05 sim 页新增：参照净值 + 错失收益，HRS 20:33 函建议、用户批准）
 for g in GROUPS:
     rows = []
+    _ref = None
     with open(f"{DATA}/simulated_nav_{g}.csv", newline="") as f:
         for r in csv.DictReader(f, delimiter="|"):
             rows.append((r["date"], float(r["act_nav"]), int(r["n_hold"])))
+            _v = r.get("ref_nav")  # 缺列/空值/非数值 → 如实「未提供」，禁编造
+            if _v not in (None, ""):
+                try:
+                    _ref = (r["date"], float(_v))
+                except ValueError:
+                    pass
     navs[g] = rows
+    REF_NAV[g] = _ref
 
 def metrics(g):
     rows = navs[g]
@@ -496,6 +505,18 @@ def _fnum(s):
     except (TypeError, ValueError):
         return None
 
+# 2026-11-05 用户裁定「2算」：声明字符串（如 DSK「本组不设止盈价（无规则）」、QD「本组未设」）
+# 算「本组未设」，不再标「未上报/非数值」。语义与 generate_daily_live_card.py 的
+# _UNSET_MARKS / _all_groups_unset 保持一致（该文件由另一 worker 同日扩展，此处只读对齐、未改动它）。
+_UNSET_MARKS = ("无价格型", "非取不到", "null", "本组未设", "本组不设")
+
+def _is_unset_decl(s):
+    """声明字符串 = 非数值、非空、且含「未设」语义标记（_UNSET_MARKS 之一）。"""
+    t = str(s or "").strip()
+    if not t or _fnum(t) is not None:
+        return False
+    return any(m in t for m in _UNSET_MARKS)
+
 # 逐条推荐跟踪行（2026-10-23 起全部历史卡；10-23 卡仅表头无数据行，如实为空）
 TRACK = []
 for _d in CARD_DATES:
@@ -538,6 +559,8 @@ for _d in CARD_DATES:
                 rec["status"] = "未触发（尚无后续交易日）"
         elif _basis != "裸价":
             rec["status"] = "不判定（卡面价为复权口径，与 bfq 不可比）"
+        elif _is_unset_decl(rec["tp"]) or _is_unset_decl(rec["sl"]):
+            rec["status"] = "不判定（本组声明未设止盈/止损价位）"  # 2026-11-05「2算」裁定
         else:
             rec["status"] = "未判定（止盈/止损未上报或非数值）"
         TRACK.append(rec)
@@ -835,7 +858,7 @@ for i, r in enumerate(TOP3):
 <span class="dim">共识 {html.escape(r.get('共识票数') or '—')}/5 组</span><br>
 <span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
 <span class="dim">仓位提示 {pos_hint(r)}</span><br>
-<span class="dim">有效期 {r['有效期(天)']} 天 ｜ 意向非成交</span></div>"""
+<span class="dim">有效期 {r['有效期(天)']} 天（<span title="WB 卡面「有效期(天)」= 除权预警扫描窗口默认值（as_of~14天+3缓冲，源 dividend_factor_WB.csv），非各组上报持有期；例证：QD 件 horizon=20。2026-11-05 22:30 广播 §三已认领">WB除权预警窗口，非上报持有期</span>）｜ 意向非成交</span></div>"""
 
 nav_cards = ""
 for g in GROUPS:
@@ -1071,7 +1094,18 @@ rows = ""
 for g in GROUPS:
     m = M[g]
     lag = "" if m["last"] == TODAY else f' <span class="warn">（最后更新 {m["last"]}）</span>'
-    rows += f"""<tr><td>{GD[g]}</td><td>{m['act']:.4f}{lag}</td><td>{pct(m['dchg'])}</td><td>{pct(m['cum'])}</td>
+    _rn = REF_NAV[g]
+    if _rn is None:
+        ref_s = '<span class="dim">未提供</span>'
+        miss_s = '<span class="dim">未提供</span>'
+    else:
+        _rd, _rv = _rn
+        ref_s = f'{_rv:.4f} <span class="dim">（{_rd}）</span>'
+        _miss = _rv - m["act"]
+        _mcls = "dn" if _miss > 0 else "up" if _miss < 0 else "dim"  # 错失为负向→绿，跑赢为正向→红（A股配色）
+        miss_s = (f'<span class="{_mcls}" title="错失收益 = 最新 ref_nav − act_nav（同件同行两列，同源同基可比）；'
+                  f'正=参照跑赢实际（含空仓闸门错失的行情），负=实际跑赢参照">{_miss:+.4f}</span>')
+    rows += f"""<tr><td>{GD[g]}</td><td>{m['act']:.4f}{lag}</td><td>{ref_s}</td><td>{miss_s}</td><td>{pct(m['dchg'])}</td><td>{pct(m['cum'])}</td>
 <td>{m['winrate']*100:.1f}% <span class="dim">（{m['win']}/{m['n']} 日）</span></td><td>{m['n_hold']}</td><td class="dim">{m['first']} → {m['last']}</td></tr>"""
 
 def hold_table(g):
@@ -1178,11 +1212,12 @@ body = f"""
 <div class="card" style="padding:18px"><canvas id="navchart" height="110"></canvas></div>
 <h2>赛马指标表</h2>
 <table>
-<tr><th>组</th><th>最新净值 (act_nav)</th><th>当日涨跌</th><th>区间累计收益</th><th>日胜率</th><th>当前持仓</th><th>样本区间</th></tr>
+<tr><th>组</th><th>最新净值 (act_nav)</th><th>参照净值 (ref_nav)</th><th>错失收益 (ref−act)</th><th>当日涨跌</th><th>区间累计收益</th><th>日胜率</th><th>当前持仓</th><th>样本区间</th></tr>
 {rows}
 </table>
 <div class="sub" style="margin-top:6px">3组/4组 最初两档 act_nav 有 1.0/0.997 等起点差异；1组 2026-09-04 首日 act_nav=0.997（含建仓成本）。</div>
 <div class="sub" style="margin-top:4px">净/毛口径（5组 2026-10-28 建议4）：本页一律用 act_nav；仅 5组 csv 提供 nav_net（净，已扣成本，与 act_nav 恒差约 45bp 累计费差），其余组无净列 → 跨组比较存在扣费口径差异，看板不混用两列，如实标注而非替换。</div>
+<div class="sub" style="margin-top:4px">参照净值 ref_nav 与错失收益（2026-11-05 新增，HRS 2026-11-05 20:33 函建议、用户批准）：ref_nav 取各组 simulated_nav_&lt;组&gt;.csv 同件 ref_nav 列最新值（与 act_nav 同件同行、同源同基可比；缺列/空值如实「未提供」，禁编造）；错失收益 = 最新 ref_nav − act_nav，<b>正=参照跑赢实际（含空仓闸门错失的行情），负=实际跑赢参照</b>，同件两列直接相减属同源可比，不存在「口径不可比」情形（缺列才不可算）。<b>空仓闸门日实际收益贡献恒 0、act_nav 原地冻结，属闸门正确行为，非数据未更新</b>（HRS 函事实：11-03~11-05 三天参照 +4.69%、实际 0；本 CSV 实测 5组 ref_nav 11-03 0.8678 → 11-05 0.9167、act_nav 冻结 0.8754，累计错失 +0.0413）。</div>
 <h2>当前持仓明细（取各组最新上报件 holdings）</h2>
 <div class="btns">{btns}</div>
 {''.join(hold_table(g) for g in GROUPS)}
