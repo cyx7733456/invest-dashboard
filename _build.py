@@ -24,7 +24,7 @@ R2 详情页重设计：KPI 条 + 实盘风向标区 + 共识买入表 + 观察�
 R3 首页 Top3：来源组徽章 + 参与状态条 + 选取规则注明
 R4 首页新增「实盘风向标」板块（位于当日实盘推荐之前）
 """
-import csv, json, os, html, re, math
+import csv, json, os, html, re, math, calendar as _pycal
 from datetime import datetime as _dt
 
 ROOT = "/Users/apple/Desktop/Investment"
@@ -210,7 +210,7 @@ def compass(date):
             rows.append({"g": g, "state": "未上报", "stance": None, "conf": None,
                          "basis": f"当日上报件不存在（daily_report_{g}_{date}.json 缺件）",
                          "no_timing": False, "human": None,
-                         "rd_disp": "读数日 未提供", "gen_status": None,
+                         "rd_disp": "数据截止：未说明", "gen_status": None,
                          "rule_note": None, "rule_full": None, "legacy": False,
                          "has_rule": False})
             continue
@@ -223,23 +223,23 @@ def compass(date):
         counts[state] += 1
         rd, rd_src = _read_day(g, d, mv)
         if rd:
-            rd_disp = f"读数日 {rd}"
+            rd_disp = f"数据截止：{rd}"
             if rd_src == "T日行":
                 rd_disp += "（T日行）"
             elif rd_src == "缺行退回":
                 rd_disp += "（缺行退回）"
         elif rd_src == "常态=T−1":
-            rd_disp = "读数日 常态=T−1"
+            rd_disp = "数据截止：常态=T−1"
         else:
-            rd_disp = "读数日 未提供"
+            rd_disp = "数据截止：未说明"
         # HRS 建议3：generated_at 与 date 同日 → 当日生成；不同日 → 事后补跑（PIT 可能不完整）
         gen_at = str(d.get("generated_at") or "")
         gday = gen_at[:10]
         rep_date = str(d.get("date") or date)
         if gday and gday == rep_date:
-            gen_status = "当日生成"
+            gen_status = "当日数据"
         elif gday:
-            gen_status = f"事后补跑（生成于 {gday}，PIT 可能不完整）"
+            gen_status = f"事后补跑（生成于 {gday}，完整性存疑）"
         else:
             gen_status = "生成时间未提供"
         rule_note, rule_full = _rule_notes(mv)
@@ -273,16 +273,17 @@ def compass_html(date):
         conf = r["conf"]
         conf_bar = (f'<span class="cbar"><i style="width:{min(conf,1)*100:.0f}%"></i></span>'
                     f'<span class="dim">{conf:.2f}</span>') if isinstance(conf, (int, float)) else '<span class="dim">—</span>'
-        b = html.escape(r["basis"])
-        # 2026-11-04 QD 回函 B1：按句读点截断，不切词中；历史件不回改（b 已 html.escape，中文标点不受影响）。
-        short = clip_note(b, 60)
+        # 2026-11-05 WB 定稿：两处 60 字计数基准统一为「先截原文、再 html.escape」，
+        # 与首页组行一致；避免含 & < > 的原文在 escape 后被放大、导致显示宽度基准不同。
+        # 2026-11-04 QD 回函 B1：按句读点截断，不切词中；历史件不回改。
+        short = html.escape(clip_note(r["basis"], 60))
         tag_note = ' <span class="dim">（本组无择时模型）</span>' if r["no_timing"] else ""
         human_note = ' <span class="dim">[人工]</span>' if r.get("human") is True else ""
-        # 可比性标记（3组 建议1：原始值逐字展示 + 可比性标记，不做共识票）
-        cmp_tag = ('<span class="tag" title="件内含结构化判据 rule，可复算">有结构化判据</span>' if r.get("has_rule")
-                   else ('' if st == "未上报" else '<span class="tag" title="判据埋在自然语言 basis 里，看板无法自动复算">仅文字 basis</span>'))
-        # 元信息：读数日（报告日≠读数日） + 生成状态（当日生成/事后补跑） + 旧口径
-        meta_bits = [r.get("rd_disp") or "读数日 未提供"]
+        # 可比性标记（3组 建议1：原始值逐字展示 + 可比性标记，不做共识票）；2026-11-05 白话化：主显改人话，技术含义留 title
+        cmp_tag = ('<span class="tag" title="件内含结构化判据 rule，可复算">可复算判据</span>' if r.get("has_rule")
+                   else ('' if st == "未上报" else '<span class="tag" title="判据埋在自然语言 basis 里，看板无法自动复算">凭经验判断</span>'))
+        # 元信息：读数日（报告日≠读数日） + 生成状态（当日生成/事后补跑） + 旧口径；2026-11-05 白话化前缀
+        meta_bits = [r.get("rd_disp") or "数据截止：未说明"]
         if r.get("gen_status"):
             meta_bits.append(r["gen_status"])
         if r.get("legacy"):
@@ -290,9 +291,10 @@ def compass_html(date):
         meta = html.escape("｜".join(meta_bits))
         # 风向预测命中率徽章（2026-11-04 接入；取不到=打分件未产出/该组缺）
         # v2 增强（2026-11-04）：tooltip 追加超额命中率；CSV 有 stale_basis 时追加 ⚠数据陈旧标记
+        # 2026-11-05 人话化：主显「近N次看对M次」（5日为正式口径）；次日/超额/陈旧技术值全部移入 tooltip
         sc = MV_SCORES.get(r["g"])
         if sc:
-            def _fmt_sc(key):
+            def _tech_sc(key):
                 n, h, rate = sc.get(key, (0, 0, None))
                 if n == 0:
                     nn, ok = sc.get("中性" + key, (0, 0))
@@ -300,30 +302,44 @@ def compass_html(date):
                         return f"{key}中性合格 {ok}/{nn}"
                     return f"{key}方向0次"
                 return f"{key} {h}/{n}={rate}"
+            def _plain_sc():
+                """主显白话：分母取 5日样本（正式口径）。方向0次 → 中性合格或暂无样本。"""
+                n, h, rate = sc.get("5日", (0, 0, None))
+                if n == 0:
+                    nn, ok = sc.get("中性5日", (0, 0))
+                    if nn:
+                        return f"中性判断 合格{ok}/{nn}"
+                    return "暂无方向判断样本"
+                return f"近{n}次看对{h}次"
             _title = (f'风向预测回算（口径预注册，禁事后改）：真值 {MV_TRUTH} 收盘；'
                       f'看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；'
                       f'中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。'
-                      f'样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime {MV_MTIME}')
+                      f'样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime {MV_MTIME}；'
+                      f'5日（正式口径）：{_tech_sc("5日")}；次日（参考口径）：{_tech_sc("次日")}')
             _ex_bits = [f'{k}超额{sc["超额" + k]}pp' for k in ("次日", "5日") if sc.get("超额" + k)]
             if _ex_bits:
                 _title += f'；超额命中率（v2 增强：方向命中率 − 常量同向基线，恒定 stance 组恒 0）：{" / ".join(_ex_bits)}'
             if sc.get("stale"):
                 _title += f'；⚠数据陈旧：basis 解析数据日 {sc["stale"]} 早于预测日 3 个自然日以上'
-            score_chip = f'<span class="tag" title="{_title}">🎯 {_fmt_sc("5日")} · {_fmt_sc("次日")}</span>'
+            score_chip = f'<span class="tag" title="{_title}">🎯 {_plain_sc()}</span>'
             if sc.get("stale"):
                 score_chip += '<span class="tag" style="color:var(--warn);border-color:var(--warn)" ' \
-                              f'title="数据日检查（v2 增强）：basis 解析数据日 {sc["stale"]} 早于预测日 3 个自然日以上">⚠数据陈旧</span>'
+                              f'title="数据日检查（v2 增强）：basis 解析数据日 {sc["stale"]} 早于预测日 3 个自然日以上">数据偏旧</span>'
         else:
             score_chip = '<span class="dim" style="font-size:11px">🎯 命中率 取不到</span>'
+        # 2026-11-05 人话化：无观点加悬浮说明（自述无择时模型，非故障）
+        st_title = ' title="该组自述无择时模型，非故障"' if st == "无观点" else ""
         grows += f"""<div class="grow"><span class="gbadge">{GD[r['g']]}</span>
-<span class="stag {stag_cls[st]}">{st}{tag_note}{human_note}</span>
+<span class="stag {stag_cls[st]}"{st_title}>{st}{tag_note}{human_note}</span>
 {conf_bar}{cmp_tag}{score_chip}<span class="dim" style="font-size:11px">{meta}</span><span class="gbasis">{short}</span></div>"""
     return f"""
 <div class="compass">
   <div class="cbarwrap">{segs}</div>
   <div class="cln">{cnt_bits}</div>
   {grows}
-  <div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型（5组 2026-10-28 确认为诚实占位）；未上报 = 当日上报件缺件（出件失败≠无观点，两格分开，不把故障读成态度）。以下为各组当前看法（描述），非收益预测；各组样本池/阈值/confidence 定义不同，不可直接横向比大小。「有结构化判据/仅文字 basis」为可比性标记。读数日＝判据数据实际截止日，报告日≠读数日；「当日生成/事后补跑」由件内 generated_at 与 date 比对得出，事后补跑件 PIT 完整性可能存疑。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。3组 2026-10-26 及更早旧件为旧口径（stance 为脚本字面量、无结构化判据），已逐格如实标注。</div>
+  <div class="sub" style="margin-top:6px">红=看空、绿=看多、灰=中性；「看对X次」是该组近5日大盘方向判断的回算战绩（样本极小，仅过程记录）；各组选股范围不同，不可横向比大小。</div>
+  <details><summary>ⓘ 技术口径说明（点开查看）</summary><div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型（5组 2026-10-28 确认为诚实占位）；未上报 = 当日上报件缺件（出件失败≠无观点，两格分开，不把故障读成态度）。以下为各组当前看法（描述），非收益预测；各组样本池/阈值/confidence 定义不同，不可直接横向比大小。「有结构化判据/仅文字 basis」为可比性标记。读数日＝判据数据实际截止日，报告日≠读数日；「当日生成/事后补跑」由件内 generated_at 与 date 比对得出，事后补跑件 PIT 完整性可能存疑。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。3组 2026-10-26 及更早旧件为旧口径（stance 为脚本字面量、无结构化判据），已逐格如实标注。</div></details>
+  <div class="sub" style="margin-top:4px">历史件口径说明：历史件的口径文本为当时原样，未回改；个别旧卡因 60 字截断留下的半句属 PIT 证据，不补全、不伪造。2026-11-04 起渲染侧改为按句读点截断，仅作用于新生成的页面。</div>
 </div>"""
 
 # ---------- 实盘卡数据 ----------
@@ -543,6 +559,146 @@ if _buy_recs and IDX:
         COMBO["bench"] = sum(_brets) / len(_brets)
         COMBO["excess"] = COMBO["ret"] - COMBO["bench"]
 
+# ---------- 实时现价通道（2026-11-05 接入 track 页「当前在跟踪」现价列）----------
+# 函数来源：投资1组_WB/data/rt_quote_probe/fetch_rt_quote.py（2026-11-05 rt-quote-probe 实测产出：
+# 腾讯 qt.gtimg.cn 通道，200 OK ~450ms，盘中实时，单请求可批量多代码）。按任务要求复制进本文件，不跨目录 import。
+# 合规：免费公开接口，仅供看板「现价参考」展示（构建时点快照，非盘中推送）；禁止写入 canon 及任何生产数据管道。
+import time, ssl, urllib.request
+
+_RT_URL = "https://qt.gtimg.cn/q={codes}"
+_RT_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+_RT_CTX = ssl.create_default_context()
+_RT_LAST_TS = 0.0
+
+def _rt_throttle():
+    global _RT_LAST_TS
+    wait = 1.0 - (time.time() - _RT_LAST_TS)
+    if wait > 0:
+        time.sleep(wait)
+    _RT_LAST_TS = time.time()
+
+def _rt_parse_one(raw):
+    """解析单条 v_xxx="1~名称~代码~现价~...~时间戳~涨跌~涨跌幅~..." 记录。"""
+    try:
+        fields = raw.split("~")
+        # 腾讯 v_ 格式实测字段索引：3=现价 30=时间戳(YYYYMMDDHHMMSS) 32=涨跌幅(%)
+        price = float(fields[3])
+        pct_chg = float(fields[32])
+        ts = fields[30]
+        if len(ts) != 14 or not ts.isdigit():
+            return None
+        return {"price": price, "pct_chg": pct_chg, "ts": ts}
+    except (IndexError, ValueError):
+        return None
+
+def fetch_rt_quotes(codes):
+    """输入代码列表（如 ["sh600519", "sz399001"]），输出 {code: {...}|None}。
+    单只失败或字段异常时对应 code 值为 None；网络失败返回全 None；本函数不抛异常。"""
+    out = {c: None for c in codes}
+    if not codes:
+        return out
+    try:
+        _rt_throttle()
+        url = _RT_URL.format(codes=",".join(codes))
+        req = urllib.request.Request(url, headers=_RT_HEADERS)
+        with urllib.request.urlopen(req, timeout=10, context=_RT_CTX) as r:
+            raw = r.read().decode("gbk", errors="replace")
+        for line in raw.split(";"):
+            line = line.strip()
+            if "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            code = key.replace("v_", "").strip()
+            val = val.strip().strip('"')
+            if code in out and val:
+                out[code] = _rt_parse_one(val)
+    except Exception:
+        pass  # 网络/解码失败：返回全 None，不抛异常
+    return out
+
+# ---------- 「当前在跟踪」过滤（2026-11-05 任务①）----------
+# 规则：动作含「买入」且 TRACK 止盈止损状态未触发（含未到期/不判定行）——已触止损/已触止盈的移出。
+_CUR_CONS = {}   # (卡日, 组, 代码) → 卡面「共识票数」原始值
+for _d in CARD_DATES:
+    for _r in card_rows(_d):
+        _CUR_CONS[(_d, _r.get("组") or "", _r.get("代码") or "")] = _r.get("共识票数")
+
+def _cons_int(s):
+    try:
+        return int(str(s).strip())
+    except (TypeError, ValueError):
+        return -1  # N/A 等排最后
+
+CUR_TRACK = [r for r in TRACK if r["act"] == "买入"
+             and not (r["status"] or "").startswith("已触")]
+CUR_TRACK.sort(key=lambda r: (-_cons_int(_CUR_CONS.get((r["d"], r["g"], r["code"]))), r["code"]))
+
+def industry_map_norm(date):
+    """norm_sym(code) → industry（上报件 code 前缀不一，统一规范化后再配对；查不到不留键）。"""
+    m = {}
+    for g in GROUPS:
+        d = load_report(g, date)
+        if not d:
+            continue
+        for k in ("picks", "holdings", "new_picks"):
+            for x in d.get(k) or []:
+                s = norm_sym(x.get("code"))
+                if s and x.get("industry") and s not in m:
+                    m[s] = str(x["industry"])
+    return m
+
+_IND_NORM_CACHE = {}
+IND_OF = {}      # (卡日, 卡面代码) → 行业（CUR_TRACK 行业分组用）
+for _r in CUR_TRACK:
+    if _r["d"] not in _IND_NORM_CACHE:
+        _IND_NORM_CACHE[_r["d"]] = industry_map_norm(_r["d"])
+    IND_OF[(_r["d"], _r["code"])] = _IND_NORM_CACHE[_r["d"]].get(norm_sym(_r["code"]))
+
+# 建议仓位 / 持有时长：读各组最新上报件（2026-11-04 实测：weight 仅 QD/DSK holdings 有；
+# expected_holding_days 仅 QD/CX/HRS new_picks 有）——有就显示，缺如实标「未提供」，禁止编造
+W_MAP, EHD_MAP = {}, {}
+for _g in GROUPS:
+    for _k in ("new_picks", "holdings"):
+        for _x in R[_g].get(_k) or []:
+            _s = norm_sym(_x.get("code"))
+            if not _s:
+                continue
+            _w = _x.get("weight")
+            if isinstance(_w, (int, float)) and _s not in W_MAP:
+                W_MAP[_s] = float(_w)
+            _e = _x.get("expected_holding_days")
+            if _e and _s not in EHD_MAP:
+                EHD_MAP[_s] = _e
+
+# 实时价批量拉取：「当前在跟踪」全部票 + sh000300 + sh510300；try/except 全包裹，任何网络失败不崩构建
+_RT_SYMS = sorted({norm_sym(r["code"]) for r in CUR_TRACK} - {None}) + ["sh000300", "sh510300"]
+RT = {}
+RT_OK = False
+RT_ERR = None
+try:
+    for _i in range(0, len(_RT_SYMS), 50):  # 分批（每批 50 个代码，批间内置 1s 限速）
+        RT.update(fetch_rt_quotes(_RT_SYMS[_i:_i + 50]))
+    RT_OK = any(v for v in RT.values())
+except Exception as _rt_e:  # 任何网络层失败都不允许崩构建
+    RT_ERR = f"{type(_rt_e).__name__}: {_rt_e}"
+    RT = {}
+
+def rt_price_cell(sym):
+    """现价格子 → (html, price 或 None)。取不到时如实显示「取不到」；title 注明价格时点=构建时刻。"""
+    q = RT.get(sym) if sym else None
+    if not q or not isinstance(q.get("price"), (int, float)):
+        return '<span class="dim">取不到</span>', None
+    p = q["price"]
+    ts = q.get("ts") or ""
+    t_disp = f"{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}" if len(ts) == 14 else ""
+    tip = "价格时点=构建时刻（腾讯 qt.gtimg.cn 公开接口；构建时点快照，非盘中推送；禁止写入 canon）"
+    p_s = f"{p:.2f}" if p >= 10 else f"{p:.4f}"
+    return f'<span title="{tip}">{p_s} <span class="dim">{t_disp}</span></span>', p
+
+_rt_snap = RT.get("sh000300")
+RT_SNAP_S = (f'{_rt_snap["ts"][4:6]}-{_rt_snap["ts"][6:8]} {_rt_snap["ts"][8:10]}:{_rt_snap["ts"][10:12]}'
+             if _rt_snap and _rt_snap.get("ts") else "取不到")
+
 # ---------- 仓位提示（模拟盘统一口径 v2） ----------
 POS_NOTE = ("仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；"
             "用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。")
@@ -598,6 +754,17 @@ details summary{cursor:pointer;color:var(--dim);font-size:13px}
 .gbasis{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .status i{font-style:normal;margin:0 2px}
 .riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
+.g7{grid-template-columns:repeat(7,1fr)}
+.caltbl{table-layout:fixed}
+.caltbl th,.caltbl td{text-align:center;white-space:normal;padding:6px 3px}
+.caltbl td{vertical-align:top;height:104px}
+.calwe{background:#0e1219}
+.calday{font-weight:700;font-size:13px}
+.calnote{font-size:11px;line-height:1.45}
+a.calcell-link{color:inherit;display:block;height:100%}
+a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid var(--acc)}
+.curind{margin-top:8px}
+.curind summary{font-size:13.5px;color:var(--tx)}
 @media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
 """
 
@@ -681,6 +848,7 @@ for g in GROUPS:
 entries = [
     ("实盘推荐专区", "live/index.html", "每日实盘推荐卡：最新摘要 + 历史日期导航"),
     ("推荐跟踪", "track/index.html", "历次推荐逐票跟踪：收益/回撤/止盈止损触发状态（bfq 口径）"),
+    ("战绩日历", "calendar/index.html", "投资以来逐日战绩月历：买入/观察数、卡内战绩%、止损止盈触发、沪深300 对照"),
     ("模拟盘赛马", "sim/index.html", "五组净值对比曲线、日胜率与当前持仓明细"),
     ("市场分析", "market/index.html", "A股当前状态分位 · 历史相似段扫描 · 切换信号清单"),
     ("策略档案", "strategies/index.html", "五组策略卡片墙（版本待契约回填）"),
@@ -694,31 +862,39 @@ seg_style = {"看多": "var(--up)", "看空": "var(--dn)", "中性": "#6e7681", 
 home_segs = "".join(f'<div class="cseg" style="width:{c/5*100:.0f}%;background:{seg_style[k]}" title="{k} {c} 组">{c if c else ""}</div>'
                     for k, c in counts.items() if c)
 def _score_short(g):
-    """首页紧凑版分数：'5日 5/6=83.3% · 次日 4/8=50.0%'；无方向预测时显示中性合格/方向0次。
-    v2 增强（2026-11-04）：CSV 有超额列时追加 '超额X.Xpp'（5日优先，无则次日）；有 stale_basis 追加 ⚠陈旧。"""
+    """首页紧凑版分数。2026-11-05 人话化：主显「近N次看对M次」（分母取 5日正式口径样本）；
+    次日/超额/陈旧等技术值全部移入 title 悬浮保留；方向0次时显示中性合格或暂无样本。
+    返回完整 <span class="tag">（含 title）。"""
     sc = MV_SCORES.get(g)
     if not sc:
-        return "🎯 取不到"
+        return '<span class="tag" title="打分件未产出或该组缺，取不到">🎯 取不到</span>'
     def f(key):
         n, h, rate = sc.get(key, (0, 0, None))
         if n == 0:
             nn, ok = sc.get("中性" + key, (0, 0))
-            return f"{key}中性 {ok}/{nn}" if nn else f"{key}方向0次"
+            return f"{key}中性合格 {ok}/{nn}" if nn else f"{key}方向0次"
         return f"{key} {h}/{n}={rate}"
-    s = f'🎯 {f("5日")} · {f("次日")}'
+    n5, h5, rate5 = sc.get("5日", (0, 0, None))
+    if n5 == 0:
+        nn, ok = sc.get("中性5日", (0, 0))
+        plain = f"中性判断 合格{ok}/{nn}" if nn else "暂无方向判断样本"
+    else:
+        plain = f"近{n5}次看对{h5}次"
+    title = (f"风向预测回算：5日（正式口径）{f('5日')}；次日（参考口径）{f('次日')}；"
+             f"中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论。分数件 mtime {MV_MTIME}")
     ex = sc.get("超额5日") or sc.get("超额次日")
     if ex:
-        s += f" · 超额{ex}pp"
+        title += f"；超额 {ex}pp"
     if sc.get("stale"):
-        s += " ⚠陈旧"
-    return s
+        title += f"；数据偏旧：basis 解析数据日 {sc['stale']} 早于预测日 3 个自然日以上"
+    return f'<span class="tag" title="{html.escape(title)}">🎯 {plain}</span>'
 
 # 2026-11-04 QD 回函 B1：按句读点截断，不切词中；先截原文再 escape，不再另加「…」（clip_note 自带）；历史件不回改。
 home_rows = "".join(
     f'<div class="grow"><span class="gbadge">{GD[r["g"]]}</span>'
     f'<span class="stag {"up" if r["state"]=="看多" else "dn" if r["state"]=="看空" else "dim"}{" warn" if r["state"]=="未上报" else ""}">{r["state"]}</span>'
     f'<span class="dim">conf {r["conf"] if r["conf"] is not None else "—"}</span>'
-    f'<span class="tag">{_score_short(r["g"])}</span>'
+    f'{_score_short(r["g"])}'
     f'<span class="dim" style="font-size:11px">{r["rd_disp"]}</span>'
     f'<span class="gbasis">{html.escape(clip_note(str(r["basis"]), 60))}</span></div>'
     for r in crows)
@@ -735,7 +911,9 @@ body = f"""
   <div class="cln"><span class="dn">看空 {counts["看空"]} 组</span> · <span class="dim">中性 {counts["中性"]} 组</span> · <span class="up">看多 {counts["看多"]} 组</span> · <span class="dim">无观点 {counts["无观点"]} 组</span> · <span class="warn">未上报 {counts["未上报"]} 组</span></div>
   {home_rows}
   <div class="sub" style="margin-top:6px">{sum_line}</div>
-  <div class="sub" style="margin-top:4px">以下为各组当前看法（描述），非收益预测，不构成共识票；各组样本池/阈值/confidence 定义不同，不可直接横向比大小（5组/3组 2026-10-28 函）。读数日＝判据数据实际截止日，报告日≠读数日。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。</div>
+  <div class="sub" style="margin-top:6px">红=看空、绿=看多、灰=中性；「看对X次」是该组近5日大盘方向判断的回算战绩（样本极小，仅过程记录）；各组选股范围不同，不可横向比大小。</div>
+  <details><summary>ⓘ 技术口径说明（点开查看）</summary><div class="sub">以下为各组当前看法（描述），非收益预测，不构成共识票；各组样本池/阈值/confidence 定义不同，不可直接横向比大小（5组/3组 2026-10-28 函）。读数日＝判据数据实际截止日，报告日≠读数日。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。</div></details>
+  <div class="sub" style="margin-top:4px">历史件口径说明：历史件的口径文本为当时原样，未回改；个别旧卡因 60 字截断留下的半句属 PIT 证据，不补全、不伪造。2026-11-04 起渲染侧改为按句读点截断，仅作用于新生成的页面。</div>
 </div>
 <div style="margin-top:8px"><a class="bigbtn" href="live/{LATEST}.html#compass">查看详情（当日风向标区）</a></div>
 <h2>当日实盘推荐 Top3（{LATEST} 卡 · 行业共识 ≥2 组判据）</h2>
@@ -790,6 +968,7 @@ live_kpis = f"""
 body = f"""
 <h1>实盘推荐专区</h1>
 <div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；触发价为裸价/实际价（2026-10-29 修复口径），旧卡以卡面「价格口径」列逐票标注为准；价格列可能为「本组未设」（该组策略口径不产价位，诚实标注；2026-11-04 起 3组已确认有日内价源，此标注随各组件内声明动态）</div>
+<div class="sub" style="margin-top:4px">📊 <a href="../calendar/index.html">战绩日历 →</a>（投资以来逐日战绩月历） ｜ <a href="../track/index.html">推荐跟踪 →</a></div>
 {live_kpis}
 <div class="card" style="margin-top:14px">
   <span class="lab">最新一日 · {LATEST}（生成 {lf['gen'] or '未上报'}）</span>
@@ -1098,11 +1277,74 @@ combo_cards = f"""
 <span class="dim">如 ETF 固定腿（kline_all_bfq 无 ETF），如实不计</span></div>
 </div>"""
 
+# ---------- 「当前在跟踪」区渲染（2026-11-05 任务①：按行业分组小标题折叠） ----------
+_cur_ind_rows = {}
+for r in CUR_TRACK:
+    ind = IND_OF.get((r["d"], r["code"])) or "行业未上报"
+    _cur_ind_rows.setdefault(ind, []).append(r)
+
+_cur_sections = ""
+for ind, rows_i in _cur_ind_rows.items():
+    tr_i = ""
+    for r in rows_i:
+        sym = norm_sym(r["code"])
+        price_cell, p_now = rt_price_cell(sym)
+        cons_v = _CUR_CONS.get((r["d"], r["g"], r["code"])) or "—"
+        if r["entry"] is None:
+            rec_s = '<span class="dim">取不到</span>'
+            fl_s = ('<span class="dim" title="TRACK 无 bfq 推荐日收盘（bfq 无该票行），'
+                    '裸价现价与之混算属口径混算、禁止硬算 → 如实标口径缺失">口径缺失</span>')
+        else:
+            rec_s = f'{r["entry"]:.4g}（{r["entry_d"]}）'
+            if p_now is None:
+                fl_s = '<span class="dim">取不到</span>'
+            else:
+                fl = p_now / r["entry"] - 1
+                tip = ("浮盈口径：实时裸价（腾讯）÷ 推荐日 bfq 收盘 − 1；"
+                       "持仓期内除权除息会造成跳变误差，看板无除权因子不修正，仅作参考")
+                fl_s = f'<span title="{tip}">{pct(fl)}</span>'
+        w_v = W_MAP.get(sym)
+        pos_s = (f'{w_v*100:.2f}'.rstrip("0").rstrip(".") + "%") if w_v is not None \
+            else '<span class="dim">未提供</span>'
+        e_v = EHD_MAP.get(sym)
+        if e_v is None:
+            ehd_s = '<span class="dim">未提供</span>'
+        elif isinstance(e_v, (int, float)):
+            ehd_s = f"{e_v:g}日"
+        else:
+            ehd_s = html.escape(str(e_v))
+        st_v = r["status"] or ""
+        if st_v == "未触发":
+            st_s = '<span style="color:var(--acc)">●</span> 在持'
+        elif st_v.startswith("未触发（尚无后续交易日）"):
+            st_s = '<span style="color:var(--warn)">●</span> 未到期观察'
+        else:
+            st_s = (f'<span style="color:var(--acc)">●</span> 在持 '
+                    f'<span class="dim" title="{html.escape(st_v)}">（止盈止损不判定）</span>')
+        tr_i += (f'<tr><td>{html.escape(r["code"])} {html.escape(r["name"])}</td>'
+                 f'<td><span class="gbadge">{GD.get(r["g"], html.escape(r["g"]))}</span></td>'
+                 f'<td>{html.escape(str(cons_v))}</td><td>{r["d"]}</td>'
+                 f'<td>{rec_s} <span class="dim">(bfq)</span></td><td>{price_cell}</td><td>{fl_s}</td>'
+                 f'<td>{r["tp"] or "<span class=dim>未上报</span>"}</td>'
+                 f'<td>{r["sl"] or "<span class=dim>未上报</span>"}</td>'
+                 f'<td>{pos_s}</td><td>{ehd_s}</td><td>{st_s}</td></tr>')
+    _cur_sections += (f'<details class="curind"><summary>{html.escape(ind)} · {len(rows_i)} 只</summary>'
+                      f'<table><tr><th>代码名称</th><th>组</th><th>共识</th><th>推荐日</th>'
+                      f'<th>推荐价（bfq）</th><th>现价（实时·构建时点）</th><th>浮盈%</th>'
+                      f'<th>止盈锚</th><th>止损锚</th><th>建议仓位</th><th>持有时长</th><th>状态</th></tr>'
+                      f'{tr_i}</table></details>')
+
+_rt_note = (f'现价快照 {RT_SNAP_S}' if RT_OK
+            else f'本次构建实时接口失败（{RT_ERR or "全部代码取不到行情"}）→ 现价列如实标「取不到」')
 body = f"""
 <h1>推荐跟踪</h1>
-<div class="sub">覆盖 {CARD_DATES[0]} ~ {CARD_DATES[-1]} 历史每日实盘卡的逐条推荐（买入/观察/固定腿全列，2026-10-23 卡仅表头无逐票行，如实为空）。</div>
+<div class="sub">覆盖 {CARD_DATES[0]} ~ {CARD_DATES[-1]} 历史每日实盘卡的逐条推荐（2026-10-23 卡仅表头无逐票行，如实为空）｜ 📊 <a href="../calendar/index.html">战绩日历 →</a></div>
 <div class="riskfoot">📌 页头声明：跟踪收益 = 假想在推荐日按 <b>bfq 收盘价</b>买入的纸面收益（bfq 对 bfq，不复权），<b>非各组模拟盘实际持仓盈亏</b>，亦非用户真实账户盈亏。卡面参考价列为卡面原始价（旧卡为 hfq/qfq 复权口径，仅展示、不用于收益计算——收益基准统一改用推荐日 bfq 收盘价，逐行列出）。状态判定：以 bfq <b>收盘价</b>对比卡面止盈/止损，盘中触发不计；仅对卡面价格为裸价（bfq）口径的行判定，复权口径行如实标「不判定」。</div>
 {combo_cards}
+<h2>当前在跟踪（{len(CUR_TRACK)} 只 · 买入档且止盈止损未触发）</h2>
+<div class="sub">过滤规则：全部历史卡「动作=买入」且 TRACK 止盈止损状态未触发（含未到期观察、复权口径不判定行）；已触止损/已触止盈移出。排序：共识票数降序、同数按代码升序；按行业折叠展示（行业取自当日上报件 industry 字段，查不到如实标「行业未上报」）。{_rt_note}；浮盈=实时裸价 ÷ 推荐日 bfq 收盘 − 1（TRACK 无 bfq 推荐价的票如实标「口径缺失」不硬算；除权除息不修正，仅参考）。建议仓位/持有时长读各组最新上报件真实字段（实测：仓位仅 3组/4组、持有时长仅 3组/2组/5组提供），缺如实标「未提供」。状态：●蓝=在持、●黄=未到期观察。卡 csv 的股数/金额/本笔最大亏损/占账户% 4 列在全部历史卡恒为空，跟踪视图不展示（数据源未提供，非删数据）。</div>
+{_cur_sections}
+<details><summary>完整历史明细（全部日期全部行，共 {COMBO["n_track"]} 条）</summary>
 <h2>逐票跟踪表</h2>
 <table>
 <tr><th>推荐日</th><th>来源组</th><th>代码</th><th>名称</th><th>档位</th><th>卡面参考价（口径）</th><th>收益基准价（bfq，日期）</th><th>最新价（bfq，日期）</th><th>自推荐日起收益%</th><th>最大回撤%</th><th>持仓交易日</th><th>止盈价</th><th>止损价</th><th>当前状态</th></tr>
@@ -1110,8 +1352,128 @@ body = f"""
 </table>
 <div class="sub">最大回撤% = 推荐日之后至最新 bfq 最低收盘 / 推荐日 bfq 收盘 − 1（仅收盘口径，盘中低点不计）。持仓交易日 = 推荐日之后至价格源最新的 bfq 交易日数（10-29 卡为 0 属正常，尚无后续交易日）。收益基准价 = 推荐日当日 bfq 收盘（当日停牌等取不到时取 ≤ 推荐日最近一行）。组合等权口径：每票 1/N 买入持有至最新，各票入场日不同；基准为同窗匹配的沪深300 收益均值（index_hist.csv sh000300，截至 {IDX_ASOF or "取不到"}，与价格源对齐）。</div>
 <div class="sub">{POS_NOTE}</div>
+</details>
 """
 open(f"{OUT}/track/index.html", "w").write(page("推荐跟踪", body, depth=1))
+
+# ================= 战绩日历页（calendar/index.html，2026-11-05 新增） =================
+# 全部数字来自 TRACK / index_hist.csv 实算，不手填；10-23 无逐票、11-04 尚无后续交易日，如实标注。
+os.makedirs(f"{OUT}/calendar", exist_ok=True)
+
+def _cal_median(xs):
+    s = sorted(xs); n = len(s)
+    if not n:
+        return None
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+# 沪深300 当日涨跌%（index_hist.csv 已升序，逐日差分）
+IDX_PCT = {}
+for _i in range(1, len(IDX)):
+    IDX_PCT[IDX[_i][0]] = IDX[_i][1] / IDX[_i - 1][1] - 1
+
+CAL_AGG = {}
+for _d in CARD_DATES:
+    _csv_rows = card_rows(_d)
+    _buy_rows = [r for r in TRACK if r["d"] == _d and r["act"] == "买入"]
+    _rets = [r["ret"] for r in _buy_rows if r["ret"] is not None]
+    CAL_AGG[_d] = {
+        "n_rows": len(_csv_rows),
+        "n_buy": sum(1 for r in _csv_rows if (r.get("动作") or "").startswith("买入")),
+        "n_watch": sum(1 for r in _csv_rows if (r.get("动作") or "").startswith("观察")),
+        "med": _cal_median(_rets),
+        "n_ret": len(_rets),
+        "sl": sum(1 for r in _buy_rows if (r["status"] or "").startswith("已触止损")),
+        "tp": sum(1 for r in _buy_rows if (r["status"] or "").startswith("已触止盈")),
+    }
+
+# 页顶「投资以来」总格：自 2026-10-26（首张有逐票数据的卡）——
+# 有效卡 = 10-26 起且非最新卡（10-23 无逐票、11-04 当日卡尚无后续交易日，均不计入总格）
+CAL_VALID = [d for d in CARD_DATES if d >= "2026-10-26" and d != LATEST]
+_cal_meds = []          # (卡日, median) 对，防止缺值时错位
+_cal_win = _cal_tot = _cal_sl = _cal_tp = 0
+for _d in CAL_VALID:
+    _a = CAL_AGG[_d]
+    if _a["med"] is not None:
+        _cal_meds.append((_d, _a["med"]))
+    _wrows = [r for r in TRACK if r["d"] == _d and r["act"] == "买入" and r["ret"] is not None]
+    _cal_win += sum(1 for r in _wrows if r["ret"] > 0)
+    _cal_tot += len(_wrows)
+    _cal_sl += _a["sl"]
+    _cal_tp += _a["tp"]
+CAL_MEAN_MED = (sum(m for _, m in _cal_meds) / len(_cal_meds)) if _cal_meds else None
+CAL_MED_LIST = "，".join(f"{d[5:]} {m*100:+.2f}%" for d, m in _cal_meds)
+
+_cal_win_s = f'{_cal_win}/{_cal_tot}'
+cal_total_cards = f"""
+<div class="grid g5" style="margin-top:12px">
+  <div class="card"><span class="lab">投资以来 · 有效卡</span><b>{len(CAL_VALID)}</b> <span class="dim">张</span><br>
+<span class="dim">{CAL_VALID[0]} ~ {CAL_VALID[-1]}（10-23 无逐票、{LATEST} 当日卡不计入）</span></div>
+  <div class="card"><span class="lab">每卡战绩中位数 · 均值</span><b>{pct(CAL_MEAN_MED) if CAL_MEAN_MED is not None else "取不到"}</b><br>
+<span class="dim" title="口径：先对每张有效卡取买入档各票 TRACK 收益（bfq 推荐日收盘→最新）中位数，再对 {len(_cal_meds)} 张卡取算术均值。逐卡：{CAL_MED_LIST}">median 卡内 → mean 卡间</span></div>
+  <div class="card"><span class="lab">总胜率（按票计）</span><b>{pct(_cal_win/_cal_tot) if _cal_tot else "取不到"}</b><br>
+<span class="dim">{_cal_win_s} 只买入档收益 &gt; 0（bfq 口径，TRACK 实算）</span></div>
+  <div class="card"><span class="lab">累计触止损</span><b class="dn">{_cal_sl}</b><br>
+<span class="dim">复权口径行不判定、不计入</span></div>
+  <div class="card"><span class="lab">累计触止盈</span><b class="up">{_cal_tp}</b><br>
+<span class="dim">复权口径行不判定、不计入</span></div>
+</div>
+<div class="sub" style="margin-top:6px">总格口径：全部来自 TRACK（bfq）实算，不手填；中位数抗极值。触发计数仅对卡面裸价口径且止盈/止损为数值的行判定（以 bfq 收盘对比，盘中不计）。</div>
+"""
+
+def _cal_month_html(y, m, build_day):
+    weeks = _pycal.Calendar(firstweekday=0).monthdayscalendar(y, m)
+    out = '<table class="caltbl"><tr>' + "".join(
+        f"<th>{w}</th>" for w in ("周一", "周二", "周三", "周四", "周五", "周六", "周日")) + "</tr>"
+    for wk in weeks:
+        out += "<tr>"
+        for dd in wk:
+            if dd == 0:
+                out += '<td></td>'
+                continue
+            ds = f"{y:04d}-{m:02d}-{dd:02d}"
+            cls = "calwe" if _pycal.weekday(y, m, dd) >= 5 else ""
+            a = CAL_AGG.get(ds)
+            inner = f'<div class="calday">{dd}</div>'
+            if a:
+                med_tip = (f"口径：该卡买入档各票 TRACK 收益（bfq 推荐日收盘→最新 bfq）的中位数；"
+                           f"样本 n={a['n_ret']}（仅 bfq 有价行）")
+                if a["n_rows"] == 0:
+                    inner += '<div class="dim calnote">无逐票数据</div>'
+                else:
+                    inner += f'<div class="dim calnote">买{a["n_buy"]} / 观{a["n_watch"]}</div>'
+                    if a["med"] is not None:
+                        inner += (f'<div class="calnote" title="{med_tip}">'
+                                  f'{pct(a["med"])}</div>')
+                    else:
+                        inner += f'<div class="dim calnote" title="{med_tip}">战绩取不到</div>'
+                    inner += f'<div class="dim calnote">止损×{a["sl"]} ｜ 止盈×{a["tp"]}</div>'
+                    if ds == LATEST:
+                        inner += '<div class="warn calnote">次日待收盘</div>'
+                idxp = IDX_PCT.get(ds)
+                if idxp is not None:
+                    inner += (f'<div class="dim calnote" title="沪深300 当日涨跌（index_hist.csv sh000300 收盘差分）">'
+                              f'300 {idxp*100:+.2f}%</div>')
+                inner = f'<a class="calcell-link" href="../live/{ds}.html" title="查看 {ds} 实盘卡详情">{inner}</a>'
+            elif ds > build_day:
+                inner = f'<div class="calday dim">{dd}</div>'
+            out += f'<td class="{cls}">{inner}</td>'
+        out += "</tr>"
+    out += "</table>"
+    return out
+
+_BUILD_DAY = BUILD_TS[:10]  # 构建日（BUILD_TS 以 "%Y-%m-%d %H:%M" 开头；_dt 已被上方 K 线循环局部名遮蔽，勿用）
+body = f"""
+<h1>战绩日历</h1>
+<div class="sub">自 2026-10-26（首张有逐票数据的实盘卡）以来的逐日战绩月历 ｜ <a href="../live/index.html">实盘推荐 →</a> ｜ <a href="../track/index.html">推荐跟踪 →</a> ｜ 数据截至 {K_ASOF or "取不到"}（bfq 价格源）</div>
+{cal_total_cards}
+<h2>2026 年 10 月</h2>
+{_cal_month_html(2026, 10, _BUILD_DAY)}
+<h2>2026 年 11 月</h2>
+{_cal_month_html(2026, 11, _BUILD_DAY)}
+<div class="sub">有卡格可点击进入当日实盘卡详情；周末灰底；未来日期留空；10-23 卡仅表头无逐票行，如实标「无逐票数据」；{LATEST} 当日卡标「次日待收盘」（需 11-05 收盘后 kline 更新）。卡内战绩% = median(该卡买入档各票 TRACK ret)，红涨绿跌，title 内注明样本数。</div>
+<div class="sub">沪深300 当日涨跌来自 公共/数据/index_hist.csv（sh000300 收盘差分）；{LATEST} 的次日表现待 11-05 收盘后入库。</div>
+"""
+open(f"{OUT}/calendar/index.html", "w").write(page("战绩日历", body, depth=1))
 
 STRAT = {
  "WB": ("V9 月度调仓：反转 + 质量分打分，V6 现金滤镜；持仓 25 只，gate_id=V9，tier=满仓；止盈 +15% / 止损 −10%（自今日收盘价起算）。",
@@ -1143,21 +1505,29 @@ STATUS = [
   "实测末行 date=2026-10-27，总数据行 16,230,290（wc -l 16,230,291 含表头），mtime 2026-10-27 19:05。日更正常。"),
  ("green", "ETF 510300（1组 源）", "公共/数据/kline_etf_510300_WB.csv",
   "实测末行 date=2026-10-27（2026-10-29 复测，3,502 个数据行，16 列齐全）——10-25 时曾停在 10-23，现已恢复日更；市场分析页依赖本文件。"),
- ("grey", "main_flow 主力资金流", "—", "已冻结（2026-10-27 用户裁定不恢复）。"),
- ("grey", "实时/分钟价", "—", "无源；模式 = 收盘后决策、次日开盘执行。"),
+ ("grey", "main_flow 主力资金流", "—", "已冻结（2026-10-27 用户裁定不恢复）；恢复需用户明确推翻。"),
+ # 实时/分钟价（2026-11-05 接入）：本次构建腾讯接口探针通过 → 灰灯改绿；失败 → 保持灰灯并如实注明原因
+ (("green", "实时/分钟价", "腾讯 qt.gtimg.cn（公开接口，构建时拉取）",
+   "2026-11-05 腾讯公开接口探针通过，已接入跟踪表现价（构建时点快照，非盘中推送）；禁止写入 canon。") if RT_OK
+  else ("grey", "实时/分钟价", "—",
+   f"本次构建腾讯接口接入失败（{RT_ERR or '全部代码取不到行情'}），如实注明；模式仍 = 收盘后决策、次日开盘执行。探针继续。")),
  ("grey", "券商委托回报", "—", "无 API，待用户手工导入。"),
  ("grey", "公告/新闻催化剂", "—", "未采集（探路中）。"),
  ("yellow", "canon 2026-09-25 全市场缺日", "公共/数据/canon_hfq_patch_20260925_QD.csv",
   "已知项：canon 主K线 2026-09-25 全市场缺一日，曾有补丁文件；页内如实保留黄灯提示。"),
 ]
 lights = {"green": ("绿灯", "up"), "yellow": ("黄灯", "warn"), "grey": ("灰灯", "dim")}
+# 2026-11-05 人话化：纯圆点 + 悬浮说明 + 表格上方图例；灯名文字不再入格
+light_tip = {"green": "正常，日更中", "yellow": "已知缺日（详见说明，非日更中断）",
+             "grey": "未接入或已冻结（非故障）"}
 srows = "".join(
-    f"""<tr><td><span class="{lights[s][1]}">●</span> {lights[s][0]}</td><td>{t}</td><td class="dim">{p}</td><td style="white-space:normal">{d}</td></tr>"""
+    f"""<tr><td><span class="{lights[s][1]}" title="{light_tip[s]}">●</span></td><td>{t}</td><td class="dim">{p}</td><td style="white-space:normal">{d}</td></tr>"""
     for s, t, p, d in STATUS)
 body = f"""
 <h1>数据状态</h1>
 <div class="sub">逐项实测于 2026-10-27 深夜；实测依据（文件路径 + 末行/行数 + mtime）见 build_report.md</div>
-<table style="margin-top:14px">
+<div class="sub" style="margin-top:8px"><span class="up">●</span> 绿=正常日更 ｜ <span class="warn">●</span> 黄=已知缺日 ｜ <span class="dim">●</span> 灰=未接入/已冻结（非故障）</div>
+<table style="margin-top:8px">
 <tr><th>状态</th><th>数据项</th><th>源文件</th><th>说明</th></tr>
 {srows}
 </table>
