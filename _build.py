@@ -722,6 +722,144 @@ _rt_snap = RT.get("sh000300")
 RT_SNAP_S = (f'{_rt_snap["ts"][4:6]}-{_rt_snap["ts"][6:8]} {_rt_snap["ts"][8:10]}:{_rt_snap["ts"][10:12]}'
              if _rt_snap and _rt_snap.get("ts") else "取不到")
 
+# ---------- 隔夜美股→A股映射晨报接入（2026-11-06 新增，供 market 页区块 + 入口页小卡） ----------
+# 数据源：投资1组_WB/data/us_market_brief_output/brief_YYYYMMDD.md（每日 08:30 launchd 自动生成）。
+# 铁律同全站：文件缺失/解析不到 → 灰态如实展示，严禁编造晨报数据。
+USB_DIR = os.path.join(ROOT, "投资1组_WB/data/us_market_brief_output")
+
+def latest_usbrief():
+    """取最新一期 brief_YYYYMMDD.md；目录/文件缺失或内容为空 → None（调用方渲染灰态）。"""
+    if not os.path.isdir(USB_DIR):
+        return None
+    cands = sorted(f for f in os.listdir(USB_DIR) if re.match(r"brief_\d{8}\.md$", f))
+    if not cands:
+        return None
+    try:
+        with open(os.path.join(USB_DIR, cands[-1])) as f:
+            txt = f.read()
+    except OSError:
+        return None
+    if not txt.strip():
+        return None
+    d8 = cands[-1][6:14]
+    gen = None
+    mtitle = re.search(r"^#\s+(.+)$", txt, re.M)
+    if mtitle:
+        g = re.search(r"(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)", mtitle.group(1))
+        if g:
+            gen = g.group(1)
+    return {"date": d8, "date_disp": f"{d8[:4]}-{d8[4:6]}-{d8[6:]}",
+            "gen": gen, "path": os.path.join(USB_DIR, cands[-1]), "text": txt}
+
+def _usb_inline(s):
+    """行内 md：先 escape 再转加粗，避免 & < > 在转义后位移。"""
+    s = html.escape(s, quote=False)
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+
+def usbrief_md_html(md_text):
+    """简易 md→HTML（标题/表格/引用/列表/段落/加粗），表格用站内表格样式。
+    仅覆盖晨报实际用到的语法子集，不是通用 md 渲染器。"""
+    lines = md_text.splitlines()
+    out, i = [], 0
+    tbl_sep = re.compile(r"^\|[\s:\-|]+\|$")
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+        m = re.match(r"^(#{1,6})\s+(.*)$", s)
+        if m:
+            lvl = 3 if len(m.group(1)) <= 2 else 4
+            out.append(f"<h{lvl} style='margin:14px 0 6px'>{_usb_inline(m.group(2))}</h{lvl}>")
+            i += 1
+            continue
+        if s.startswith("|") and i + 1 < len(lines) and tbl_sep.match(lines[i + 1].strip()):
+            hdr = [c.strip() for c in s.strip("|").split("|")]
+            i += 2
+            rows = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                rows.append((cells + [""] * len(hdr))[:len(hdr)])
+                i += 1
+            thead = "".join(f"<th>{_usb_inline(c)}</th>" for c in hdr)
+            tbody = "".join("<tr>" + "".join(f"<td>{_usb_inline(c)}</td>" for c in r) + "</tr>" for r in rows)
+            out.append(f"<table><tr>{thead}</tr>{tbody}</table>")
+            continue
+        if s.startswith(">"):
+            out.append(f'<div class="sub" style="margin:4px 0">{_usb_inline(s.lstrip("> "))}</div>')
+            i += 1
+            continue
+        if s.startswith("- "):
+            items = []
+            while i < len(lines) and lines[i].strip().startswith("- "):
+                items.append(f"<li>{_usb_inline(lines[i].strip()[2:])}</li>")
+                i += 1
+            out.append('<ul style="margin:4px 0;padding-left:20px;font-size:12.5px">' + "".join(items) + "</ul>")
+            continue
+        para = [s]
+        i += 1
+        while i < len(lines):
+            t = lines[i].strip()
+            if not t or t.startswith(("#", "|", ">", "- ")):
+                break
+            para.append(t)
+            i += 1
+        out.append(f'<p style="margin:6px 0">{_usb_inline(" ".join(para))}</p>')
+    return "\n".join(out)
+
+def usbrief_summary(text):
+    """入口卡一行摘要：纳指/标普/道指涨跌幅 + ③一句话传导结论；两项都解析不到 → None。"""
+    lines = text.splitlines()
+    idx, concl = {}, None
+    for i, ln in enumerate(lines):
+        if re.match(r"^#{1,6}\s*③", ln.strip()):
+            for l2 in lines[i + 1:]:
+                t = l2.strip()
+                if not t:
+                    continue
+                if t.startswith("#"):
+                    break
+                concl = t
+                break
+            break
+    for ln in lines:
+        t = ln.strip()
+        if not t.startswith("|"):
+            continue
+        cells = [c.strip() for c in t.strip("|").split("|")]
+        if len(cells) >= 3 and cells[0] in ("道琼斯", "纳斯达克", "标普500") \
+                and re.match(r"^[+-]?\d+(?:\.\d+)?%$", cells[2]):
+            idx[cells[0]] = cells[2]
+    bits = []
+    if idx:
+        bits.append(" / ".join(f"{k} {idx[k]}" for k in ("纳斯达克", "标普500", "道琼斯") if k in idx))
+    if concl:
+        bits.append(clip_note(concl, 80))
+    return "；".join(bits) if bits else None
+
+USB = latest_usbrief()
+USB_BUILD_DAY = BUILD_TS[:10].replace("-", "")  # 与 brief 文件名的紧凑日期同格式
+if USB:
+    _usb_sum = usbrief_summary(USB["text"])
+    # 入口页小卡：今日有晨报直出摘要；无今日晨报显示最近一期并标注日期
+    _usb_note = "" if USB["date"] == USB_BUILD_DAY else f'（{USB["date_disp"]} 期）'
+    USB_CARD = (f'<a class="entry" href="market/index.html#usbrief"><b>美股晨报{_usb_note}</b><br>'
+                f'<span class="dim">{html.escape(_usb_sum) if _usb_sum else "点击查看"}</span></a>')
+    _usb_date_note = ("" if USB["date"] == USB_BUILD_DAY
+                      else f' <span class="warn">（今日晨报尚未生成，显示最近一期 {USB["date_disp"]}）</span>')
+    USB_BLOCK = f"""
+<h2 id="usbrief">美股晨报（隔夜美股→A股板块映射）{_usb_date_note}</h2>
+<div class="card usb" style="font-size:13px">
+<div class="sub">生成时间：{html.escape(USB['gen'] or '未注明')} ｜ 源文件：{USB['path']} ｜ 每日 08:30 launchd 自动生成</div>
+{usbrief_md_html(USB['text'])}
+</div>"""
+else:
+    USB_CARD = ('<a class="entry" href="market/index.html#usbrief"><b>美股晨报</b><br>'
+                '<span class="dim">今日晨报尚未生成 · 点击查看</span></a>')
+    USB_BLOCK = """
+<h2 id="usbrief">美股晨报（隔夜美股→A股板块映射）</h2>
+<div class="riskfoot">今日晨报尚未生成（源目录 投资1组_WB/data/us_market_brief_output/ 无 brief_*.md），取不到即如实展示，不编造。</div>"""
+
 # ---------- 仓位提示（模拟盘统一口径 v2） ----------
 POS_NOTE = ("仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；"
             "用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。")
@@ -788,6 +926,7 @@ a.calcell-link{color:inherit;display:block;height:100%}
 a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid var(--acc)}
 .curind{margin-top:8px}
 .curind summary{font-size:13.5px;color:var(--tx)}
+.usb td,.usb th{white-space:normal}
 @media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
 """
 
@@ -945,7 +1084,7 @@ body = f"""
 <div class="grid g3">{top3_html}</div>
 <div class="sub" style="margin-top:6px">来源组徽章为卡面记录的单票来源组；共识票数含同行业他组候选。全部为 AI 意向、未成交；完整卡见 <a href="live/{LATEST}.html">实盘专区</a></div>
 <h2>板块入口</h2>
-<div class="grid g6">{entry_html}</div>
+<div class="grid g6">{USB_CARD}{entry_html}</div>
 """
 open(f"{OUT}/index.html", "w").write(page("首页", body, depth=0))
 
@@ -1717,6 +1856,7 @@ if ETF:
     market_body = f"""
 <h1>市场分析</h1>
 <div class="sub">数据源：{ETF_SRC}（1组 维护，腾讯+新浪双源；截至 {AS_OF}，{N_DATA} 个交易日）｜ 收益一律用 close_hfq_mul（后复权乘法），MA/价格位置用 bfq close ｜ 本页全部数字由 _build.py 每次构建时从源文件动态计算，无手工写死</div>
+{USB_BLOCK}
 <h2>当前状态（as_of {AS_OF} · 分位 = 全历史滚动窗口法，含当前值）</h2>
 <div class="grid g5">{stat_cards}</div>
 <div class="sub" style="margin-top:6px">分位条按看板涨红跌绿主题：高分位红（历史偏强）/ 低分位绿（历史偏弱）/ 中段黄。分位 = 历史上同长度滚动窗口收益 ≤ 当前值的占比。</div>
