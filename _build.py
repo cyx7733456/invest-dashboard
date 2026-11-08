@@ -1562,8 +1562,52 @@ for r in CUR_TRACK:
     ind = IND_OF.get((r["d"], r["code"])) or "行业未上报"
     _cur_ind_rows.setdefault(ind, []).append(r)
 
+def _pct_inline(x):
+    """收益数字专用配色：正=红 var(--up) / 负=绿 var(--dn)，仅作用于收益数字本身、用内联 style；
+    刻意不复用 .up/.dn 状态灯语义（上一轮状态灯语义串味 bug），也不改全站公共 CSS。None 如实标「取不到」。"""
+    if x is None:
+        return '<span class="dim">取不到</span>'
+    col = "var(--up)" if x > 0 else ("var(--dn)" if x < 0 else "var(--dim)")
+    return f'<span style="color:{col}">{x*100:+.2f}%</span>'
+
+
+def _ind_eq_ret(rows_i):
+    """行业等权收益 = 该行业所有 ret 非 None 行的算术平均（与 COMBO["ret"] 同口径）；
+    一条有效收益都没有 → None（绝不用 0 或估算填充）。"""
+    vals = [r["ret"] for r in rows_i if r["ret"] is not None]
+    return (sum(vals) / len(vals)) if vals else None
+
+
+def _ind_sort_key(ind):
+    er = _ind_eq_ret(_cur_ind_rows[ind])
+    return (0, -er, ind) if er is not None else (1, 0, ind)
+
+
+_ind_order = sorted(_cur_ind_rows.keys(), key=_ind_sort_key)  # 行业间：等权收益降序，无有效收益排最后
+
+_ind_tip = ("行业等权收益 = 本行业各票自其推荐日 bfq 收盘起算收益的算术平均（等权）；"
+            "各票入场日（推荐日）不同；纸面跟踪口径，非组合真实收益、非用户真实账户盈亏；"
+            "不含无 bfq 价源（口径缺失）的票")
+
 _cur_sections = ""
-for ind, rows_i in _cur_ind_rows.items():
+for ind in _ind_order:
+    # 行业内：按 bfq 收盘口径自推荐日起收益降序；ret is None 的口径缺失票排末尾；并列按代码升序
+    rows_i = sorted(_cur_ind_rows[ind],
+                    key=lambda r: (r["ret"] is None, -(r["ret"] or 0), r["code"]))
+    _n = len(rows_i)
+    _m = sum(1 for r in rows_i if r["ret"] is not None)
+    _eq = _ind_eq_ret(rows_i)
+    _min_d = min(r["d"] for r in rows_i)          # 最早关注日（推荐日）
+    _asof_s = K_ASOF or "截止日取不到"             # 截止日 = bfq 价格源最新交易日
+    _eq_num = _pct_inline(_eq) if _eq is not None else None
+    _eq_seg = f"等权 {_eq_num}" if _eq_num else "等权收益取不到"
+    _eq_sub = _eq_num or '<span class="dim">取不到</span>'
+    _bench = None
+    _idx0 = idx_close_le(_min_d)
+    _idx1 = idx_close_le(K_ASOF) if K_ASOF else None
+    if _idx0 and _idx1 and _idx0[1]:
+        _bench = _idx1[1] / _idx0[1] - 1          # 同期沪深300 单窗口区间收益（复刻 L576-580 写法）
+    _bench_s = _pct_inline(_bench) if _bench is not None else '<span class="dim">基准取不到</span>'
     tr_i = ""
     for r in rows_i:
         sym = norm_sym(r["code"])
@@ -1573,6 +1617,8 @@ for ind, rows_i in _cur_ind_rows.items():
             rec_s = '<span class="dim">取不到</span>'
             fl_s = ('<span class="dim" title="TRACK 无 bfq 推荐日收盘（bfq 无该票行），'
                     '裸价现价与之混算属口径混算、禁止硬算 → 如实标口径缺失">口径缺失</span>')
+            _ret_s = ('<span class="dim" title="TRACK 无 bfq 推荐日收盘，自推荐日起收益口径缺失、'
+                      '不硬算，排序置于本行业末尾">口径缺失</span>')
         else:
             rec_s = f'{r["entry"]:.4g}（{r["entry_d"]}）'
             if p_now is None:
@@ -1582,6 +1628,7 @@ for ind, rows_i in _cur_ind_rows.items():
                 tip = ("浮盈口径：实时裸价（腾讯）÷ 推荐日 bfq 收盘 − 1；"
                        "持仓期内除权除息会造成跳变误差，看板无除权因子不修正，仅作参考")
                 fl_s = f'<span title="{tip}">{pct(fl)}</span>'
+            _ret_s = _pct_inline(r["ret"])          # bfq 收盘口径自推荐日起收益（本列即排序依据）
         w_v = W_MAP.get(sym)
         pos_s = (f'{w_v*100:.2f}'.rstrip("0").rstrip(".") + "%") if w_v is not None \
             else '<span class="dim">未提供</span>'
@@ -1604,12 +1651,17 @@ for ind, rows_i in _cur_ind_rows.items():
                  f'<td><span class="gbadge">{GD.get(r["g"], html.escape(r["g"]))}</span></td>'
                  f'<td>{html.escape(str(cons_v))}</td><td>{r["d"]}</td>'
                  f'<td>{rec_s} <span class="dim">(bfq)</span></td><td>{price_cell}</td><td>{fl_s}</td>'
+                 f'<td>{_ret_s}</td>'
                  f'<td>{r["tp"] or "<span class=dim>未上报</span>"}</td>'
                  f'<td>{r["sl"] or "<span class=dim>未上报</span>"}</td>'
                  f'<td>{pos_s}</td><td>{ehd_s}</td><td>{st_s}</td></tr>')
-    _cur_sections += (f'<details class="curind"><summary>{html.escape(ind)} · {len(rows_i)} 只</summary>'
+    _cur_sections += (f'<details class="curind"><summary title="{html.escape(_ind_tip, quote=True)}">'
+                      f'{html.escape(ind)} · {_n} 只 · {_eq_seg} · {_min_d} ~ {_asof_s}</summary>'
+                      f'<div class="sub" style="margin:6px 0 2px">本行业统计区间 {_min_d} ~ {_asof_s}'
+                      f'｜样本 {_n} 只（有效收益 {_m} 只）｜等权收益 {_eq_sub}｜同期沪深300 {_bench_s}</div>'
                       f'<table><tr><th>代码名称</th><th>组</th><th>共识</th><th>推荐日</th>'
                       f'<th>推荐价（bfq）</th><th>现价（实时·构建时点）</th><th>浮盈%</th>'
+                      f'<th>自推荐日起收益%（bfq）</th>'
                       f'<th>止盈锚</th><th>止损锚</th><th>建议仓位</th><th>持有时长</th><th>状态</th></tr>'
                       f'{tr_i}</table></details>')
 
@@ -1625,7 +1677,7 @@ body = f"""
 {exec_card_html(LATEST)}
 <details><summary>历史累计备查 · 当前在跟踪 {len(CUR_TRACK)} 只（全部历史卡累计，非今日操作清单，默认折叠）</summary>
 <h2>当前在跟踪（{len(CUR_TRACK)} 只 · 买入档且止盈止损未触发）</h2>
-<div class="sub">过滤规则：全部历史卡「动作=买入」且 TRACK 止盈止损状态未触发（含未到期观察、复权口径不判定行）；已触止损/已触止盈移出。排序：共识票数降序、同数按代码升序；按行业折叠展示（行业取自当日上报件 industry 字段，查不到如实标「行业未上报」）。{_rt_note}；浮盈=实时裸价 ÷ 推荐日 bfq 收盘 − 1（TRACK 无 bfq 推荐价的票如实标「口径缺失」不硬算；除权除息不修正，仅参考）。建议仓位/持有时长读各组最新上报件真实字段（实测：仓位仅 3组/4组、持有时长仅 3组/2组/5组提供），缺如实标「未提供」。状态：●蓝=在持、●黄=未到期观察。卡 csv 的股数/金额/本笔最大亏损/占账户% 4 列在全部历史卡恒为空，跟踪视图不展示（数据源未提供，非删数据）。</div>
+<div class="sub">过滤规则：全部历史卡「动作=买入」且 TRACK 止盈止损状态未触发（含未到期观察、复权口径不判定行）；已触止损/已触止盈移出。排序：行业按等权收益降序（收益高在前、无有效收益的行业排最后）、行业内按个股 bfq 自推荐日起收益降序；口径缺失票排最后；按行业折叠展示（行业取自当日上报件 industry 字段，查不到如实标「行业未上报」）。表内「自推荐日起收益%（bfq）」为排序依据（与页头声明/组合卡同口径），「浮盈%」为实时裸价参考、不参与排序。行业统计口径：等权收益 = 行业内各票自其推荐日 bfq 收盘起算收益的算术平均（等权、各票入场日不同），为纸面跟踪，非组合真实收益、非用户真实账户盈亏；行业标题与表前小字的时间段 = 该行业最早关注日（推荐日）~ 价格源最新交易日（bfq），截止日取不到如实标；同期沪深300 按该最早关注日 → 价格源最新的单窗口区间涨跌幅，指数取不到标「基准取不到」；无 bfq 价源票不计入等权、如实标「口径缺失」。{_rt_note}；浮盈=实时裸价 ÷ 推荐日 bfq 收盘 − 1（TRACK 无 bfq 推荐价的票如实标「口径缺失」不硬算；除权除息不修正，仅参考）。建议仓位/持有时长读各组最新上报件真实字段（实测：仓位仅 3组/4组、持有时长仅 3组/2组/5组提供），缺如实标「未提供」。状态：●蓝=在持、●黄=未到期观察。卡 csv 的股数/金额/本笔最大亏损/占账户% 4 列在全部历史卡恒为空，跟踪视图不展示（数据源未提供，非删数据）。</div>
 {_cur_sections}
 </details>
 <details><summary>完整历史明细（全部日期全部行，共 {COMBO["n_track"]} 条）</summary>
