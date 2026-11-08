@@ -1,0 +1,84 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="../auth.js"></script>
+<title>美股晨报归档 · 五组投资大看板</title>
+<style>
+:root{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--up:#e5544b;--dn:#3fb950;--acc:#58a6ff;--warn:#d29922}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",monospace}
+a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
+.topnav{display:flex;gap:18px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}
+.topnav a{color:var(--dim);font-size:13px} .topnav a.on{color:var(--tx);font-weight:700;border-bottom:2px solid var(--acc)}
+.wrap{max-width:1080px;margin:0 auto;padding:22px}
+h1{font-size:22px;margin:6px 0 2px} h2{font-size:16px;margin:26px 0 10px;border-left:3px solid var(--acc);padding-left:9px}
+.sub{color:var(--dim);font-size:12px}
+.grid{display:grid;gap:12px} .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g6{grid-template-columns:repeat(3,1fr)} .gk{grid-template-columns:repeat(5,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.card b{font-size:19px} .card .lab{color:var(--dim);font-size:11px;display:block}
+.up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)} .warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:right;white-space:nowrap}
+th{background:#171c26;color:var(--dim);font-weight:600} th:first-child,td:first-child{text-align:left}
+.tag{display:inline-block;background:#1c2432;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:11px;color:var(--dim);margin:2px}
+.entry{display:block;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px;color:var(--tx)}
+.entry:hover{border-color:var(--acc);text-decoration:none}
+.bigbtn{display:inline-block;background:#1f3a5f;border:1px solid var(--acc);border-radius:8px;padding:10px 26px;color:#cfe4ff;font-size:15px;font-weight:700;margin-top:10px}
+.bigbtn:hover{background:#25477a;text-decoration:none}
+footer{color:#5c6575;font-size:11px;text-align:center;padding:22px;border-top:1px solid var(--line);margin-top:34px}
+.btns button{background:#171c26;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 14px;margin-right:8px;cursor:pointer;font-size:13px}
+.btns button.on{border-color:var(--acc);color:var(--acc)}
+.holdsec{display:none} .holdsec.on{display:block}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:12px;background:var(--panel)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+.compass{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.cbarwrap{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.cseg{display:flex;align-items:center;justify-content:center;color:#d7dee8;font-size:12px;min-width:0}
+.cln{margin:8px 0 4px;font-size:13px}
+.grow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed #1c2330;font-size:12.5px}
+.gbadge{display:inline-block;background:#1f2937;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-weight:700;min-width:34px;text-align:center}
+.stag{font-weight:700;min-width:52px}
+.cbar{display:inline-block;width:80px;height:7px;background:#0d1117;border:1px solid var(--line);border-radius:4px;overflow:hidden;vertical-align:middle}
+.cbar i{display:block;height:100%;background:var(--acc)}
+.gbasis{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.status i{font-style:normal;margin:0 2px}
+.riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
+.g7{grid-template-columns:repeat(7,1fr)}
+.caltbl{table-layout:fixed}
+.caltbl th,.caltbl td{text-align:center;white-space:normal;padding:6px 3px}
+.caltbl td{vertical-align:top;height:104px}
+.calwe{background:#0e1219}
+.calday{font-weight:700;font-size:13px}
+.calnote{font-size:11px;line-height:1.45}
+a.calcell-link{color:inherit;display:block;height:100%}
+a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid var(--acc)}
+.curind{margin-top:8px}
+.curind summary{font-size:13.5px;color:var(--tx)}
+.usb td,.usb th{white-space:normal}
+@media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
+</style></head><body>
+<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html">实盘推荐</a><a href="../track/index.html">推荐跟踪</a><a href="../sim/index.html">模拟盘赛马</a><a href="../market/index.html">市场分析</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
+<div class="wrap">
+
+<h1>美股晨报 · 历史归档</h1>
+<div class="sub">按日期倒序，共 1 期 ｜ <a href="index.html">← 返回市场分析</a> ｜ <a href="../index.html">看板首页</a></div>
+<div class="riskfoot">⚠️ 隔夜美股晨报是<b>当日有效</b>的时效快照，只对其生成日的 A 股开盘有参考价值。此处全部为历史归档，<b>不构成当前判断依据</b>；市场分析页只展示当期晨报的紧凑摘要。</div>
+<details class="curind" open><summary>2026-11-06 期 （已归档 · 不作当前依据） ｜ 纳斯达克 -5.52% / 标普500 -4.36% / 道琼斯 -3.44%；隔夜纳指-5.52%/标普-4.36%（暴跌），A股沪指今开-1.11%；映射方向可判定 8/12 </summary><div class="card usb" style="font-size:13px;margin-top:6px"><h3 style='margin:14px 0 6px'>隔夜美股→A股板块映射晨报 2026-11-06 14:39</h3>
+<div class="sub" style="margin:4px 0">用途：给白天无法盯盘用户的早晨自动化简报。静态映射表 v1，人工维护。</div>
+<h3 style='margin:14px 0 6px'>① 隔夜美股快照</h3>
+<table><tr><th>指数</th><th>点位</th><th>涨跌幅</th><th>行情时间(美东)</th></tr><tr><td>道琼斯</td><td>51,523.06</td><td>-3.44%</td><td>2026-11-05 16:35:51</td></tr><tr><td>纳斯达克</td><td>24,315.00</td><td>-5.52%</td><td>2026-11-05 17:15:59</td></tr><tr><td>标普500</td><td>7,353.73</td><td>-4.36%</td><td>2026-11-05 16:34:08</td></tr></table>
+<p style="margin:6px 0"><b>关键代表股（昨收）</b></p>
+<table><tr><th>股票</th><th>收盘价</th><th>涨跌幅</th></tr><tr><td>英伟达</td><td>181.60</td><td>-9.26%</td></tr><tr><td>台积电</td><td>353.10</td><td>-10.78%</td></tr><tr><td>博通</td><td>291.53</td><td>-10.43%</td></tr><tr><td>美光科技</td><td>656.39</td><td>-17.46%</td></tr><tr><td>超威半导体</td><td>404.40</td><td>-17.26%</td></tr><tr><td>Coherent Corp.</td><td>169.76</td><td>-12.98%</td></tr><tr><td>苹果</td><td>344.17</td><td>-1.53%</td></tr><tr><td>特斯拉</td><td>343.69</td><td>-10.77%</td></tr></table>
+<p style="margin:6px 0"><b>A股今日指数（生成时点快照，非收盘）</b></p>
+<table><tr><th>指数</th><th>点位</th><th>涨跌幅</th></tr><tr><td>上证指数</td><td>3,648.81</td><td>-1.11%</td></tr><tr><td>深证成指</td><td>11,196.85</td><td>-2.39%</td></tr><tr><td>创业板指</td><td>2,471.22</td><td>-3.72%</td></tr><tr><td>恒生指数（港股）</td><td>24,563.56</td><td>-0.94%</td></tr></table>
+<h3 style='margin:14px 0 6px'>② 映射板块今日对照表</h3>
+<table><tr><th>映射主线</th><th>A股板块(东财)</th><th>板块涨跌</th><th>代表股均值</th><th>隔夜美股参照</th><th>方向一致性</th></tr><tr><td>AI算力/光模块CPO</td><td>CPO概念 -4.26%</td><td>-4.26%</td><td>-8.31%</td><td>-10.89%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>AI算力/PCB</td><td>印制电路板 -5.66%</td><td>-5.66%</td><td>-8.22%</td><td>-9.84%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>半导体/晶圆代工</td><td>半导体 -3.14%</td><td>-3.14%</td><td>-1.11%</td><td>-12.43%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>存储</td><td>存储芯片 -3.14%</td><td>-3.14%</td><td>-4.92%</td><td>-17.46%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>消费电子</td><td>消费电子 -2.62%</td><td>-2.62%</td><td>+0.14%</td><td>-1.53%(映射股均值)</td><td>—(一方波动&lt;0.5%，中性)</td></tr><tr><td>新能源车/锂电</td><td>锂电池 -2.86%</td><td>-2.86%</td><td>-2.21%</td><td>-10.77%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>光伏</td><td>光伏设备 -0.68%</td><td>-0.68%</td><td>-1.63%</td><td>-5.52%(纳指替代)</td><td>一致(同向)</td></tr><tr><td>医药</td><td>医药生物 -1.71%</td><td>-1.71%</td><td>-1.41%</td><td>-2.96%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>银行金融</td><td>银行 +0.91%</td><td>+0.91%</td><td>+0.65%</td><td>-4.19%(映射股均值)</td><td>背离(同向预期但走势相反)</td></tr><tr><td>能源/油价</td><td>石油石化 -1.57%</td><td>-1.57%</td><td>+1.37%</td><td>-2.35%(映射股均值)</td><td>背离(同向预期但走势相反)</td></tr><tr><td>有色/黄金</td><td>贵金属 -1.28%</td><td>-1.28%</td><td>-3.81%</td><td>-3.08%(映射股均值)</td><td>一致(同向)</td></tr><tr><td>军工</td><td>国防军工 -1.35%</td><td>-1.35%</td><td>+1.90%</td><td>-3.17%(映射股均值)</td><td>背离(同向预期但走势相反)</td></tr><tr><td>农业</td><td>种植业 +2.46%</td><td>+2.46%</td><td>+0.44%</td><td>-5.52%(纳指替代)</td><td>—(一方波动&lt;0.5%，中性)</td></tr><tr><td>中概/港股联动</td><td>恒生指数(腾讯)</td><td>-0.93%</td><td>-2.95%</td><td>+2.64%(映射股均值)</td><td>背离(同向预期但走势相反)</td></tr></table>
+<p style="margin:6px 0"><b>代表股明细</b></p>
+<ul style="margin:4px 0;padding-left:20px;font-size:12.5px"><li>AI算力/光模块CPO: 中际旭创-8.91%, 新易盛-7.15%, 工业富联-7.83%, 沪电股份-9.36%</li><li>AI算力/PCB: 沪电股份-9.36%, 胜宏科技-7.93%, 深南电路-7.36%</li><li>半导体/晶圆代工: 中芯国际-1.64%, 北方华创+0.17%, 长电科技-1.85%</li><li>存储: 兆易创新-8.92%, 江波龙-4.51%, 紫光国微-1.32%</li><li>消费电子: 立讯精密-1.42%, 歌尔股份-0.68%, 传音控股+2.52%</li><li>新能源车/锂电: 宁德时代-3.42%, 比亚迪-1.07%, 当升科技-2.15%</li><li>光伏: 隆基绿能-0.24%, 通威股份-0.48%, 阳光电源-4.16%</li><li>医药: 恒瑞医药+0.32%, 迈瑞医疗+0.12%, 药明康德-4.66%</li><li>银行金融: 招商银行+0.49%, 工商银行+0.84%, 兴业银行+0.61%</li><li>能源/油价: 中国石油+1.12%, 中国石化+1.58%, 中国神华+1.42%</li><li>有色/黄金: 紫金矿业-5.16%, 山东黄金-1.05%, 洛阳钼业-5.21%</li><li>军工: 中航沈飞+0.04%, 航发动力-1.15%, 中直股份+6.81%</li><li>农业: 北大荒+0.96%, 隆平高科+0.37%, 大北农+0.00%</li><li>中概/港股联动: 腾讯控股-2.42%, 阿里巴巴-W-3.48%</li></ul>
+<h3 style='margin:14px 0 6px'>③ 一句话传导结论</h3>
+<p style="margin:6px 0">隔夜纳指-5.52%/标普-4.36%（暴跌），A股沪指今开-1.11%；映射方向可判定 8/12 条，传导链总体成立；今日映射板块领跌：AI算力/PCB(-5.66%)，逆势：农业(+2.46%)。</p>
+<h3 style='margin:14px 0 6px'>④ 数据源与时间戳声明</h3>
+<ul style="margin:4px 0;padding-left:20px;font-size:12.5px"><li>美股/港股/A股行情：腾讯 qt.gtimg.cn（美股为美东昨收；A股为生成时点快照，非收盘）</li><li>A股板块涨跌：东财 push2 clist（行业 t:2 + 概念 t:3），全量 1022 个板块</li><li>A股行情时间戳：20261106143933（若为午盘/盘中时点，涨跌幅非全天）</li><li>新浪 int_* 源已探明返回陈旧数据，本模块不采用</li><li>映射表：us_to_ashare_map_WB.csv（静态表 v1，人工维护；方向判定阈值 ±0.5%）</li><li>本简报由脚本自动生成：2026-11-06 14:39:32，数据如有冲突以交易所为准；不构成投资建议</li></ul></div></details>
+
+</div>
+<footer>数据截至：2026-11-08 15:18（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+</body></html>

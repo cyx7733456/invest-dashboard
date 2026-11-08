@@ -839,26 +839,77 @@ def usbrief_summary(text):
 
 USB = latest_usbrief()
 USB_BUILD_DAY = BUILD_TS[:10].replace("-", "")  # 与 brief 文件名的紧凑日期同格式
-if USB:
+import datetime as _dtmod  # 局部导入：模块级 _dt 已被 458 行 K 线循环覆盖成字符串，勿用
+
+def _usb_age_days(date8):
+    """晨报日期距构建日的自然日差；解析失败返回 None。"""
+    try:
+        d0 = _dtmod.datetime.strptime(date8, "%Y%m%d").date()
+        d1 = _dtmod.datetime.strptime(USB_BUILD_DAY, "%Y%m%d").date()
+        return (d1 - d0).days
+    except Exception:
+        return None
+
+# ⛔ 时效铁律（2026-11-08 用户举证修复）：隔夜美股晨报是「当日有效」的时效品，
+# 只对其生成日的 A 股开盘有参考价值。旧版把最近一期全文常驻市场分析页主位，
+# 11-08 周日仍铺着 11-06 的隔夜快照，属版式错误而非数据错误。
+# 现在：当日有 brief → 紧凑摘要卡 + 全文折叠；无当日 brief → 只留一行灰态 + 归档链接。
+USB_ALL = []
+if os.path.isdir(USB_DIR):
+    USB_ALL = sorted((f for f in os.listdir(USB_DIR) if re.match(r"brief_\d{8}\.md$", f)), reverse=True)
+ARC_URL = "usbrief_archive.html"
+_usb_today = bool(USB and USB["date"] == USB_BUILD_DAY)
+_usb_age = _usb_age_days(USB["date"]) if USB else None
+
+if USB and _usb_today:
     _usb_sum = usbrief_summary(USB["text"])
-    # 入口页小卡：今日有晨报直出摘要；无今日晨报显示最近一期并标注日期
-    _usb_note = "" if USB["date"] == USB_BUILD_DAY else f'（{USB["date_disp"]} 期）'
-    USB_CARD = (f'<a class="entry" href="market/index.html#usbrief"><b>美股晨报{_usb_note}</b><br>'
+    USB_CARD = (f'<a class="entry" href="market/index.html#usbrief"><b>今日美股晨报（{USB["date_disp"]}）</b><br>'
                 f'<span class="dim">{html.escape(_usb_sum) if _usb_sum else "点击查看"}</span></a>')
-    _usb_date_note = ("" if USB["date"] == USB_BUILD_DAY
-                      else f' <span class="warn">（今日晨报尚未生成，显示最近一期 {USB["date_disp"]}）</span>')
     USB_BLOCK = f"""
-<h2 id="usbrief">美股晨报（隔夜美股→A股板块映射）{_usb_date_note}</h2>
+<h2 id="usbrief">今日隔夜晨报（隔夜美股→A股板块映射）</h2>
 <div class="card usb" style="font-size:13px">
-<div class="sub">生成时间：{html.escape(USB['gen'] or '未注明')} ｜ 源文件：{USB['path']} ｜ 每日 08:30 launchd 自动生成</div>
+<div class="sub">适用：{USB['date_disp']} A股开盘 ｜ 生成 {html.escape(USB['gen'] or '未注明')} ｜ 每日 08:30 自动生成 ｜ <a href="{ARC_URL}">历史归档 →</a></div>
+<p style="margin:8px 0"><b>{html.escape(_usb_sum) if _usb_sum else '摘要解析不到，见下方全文'}</b></p>
+<details><summary>展开本期晨报全文（美股快照 / 代表股 / 板块映射 / 传导结论）</summary>
 {usbrief_md_html(USB['text'])}
+</details>
+<div class="sub" style="margin-top:6px">⚠️ 隔夜快照仅对生成日开盘有效；下一期生成后本期自动转入 <a href="{ARC_URL}">历史归档</a>，不再作为当前判断依据。</div>
 </div>"""
 else:
-    USB_CARD = ('<a class="entry" href="market/index.html#usbrief"><b>美股晨报</b><br>'
-                '<span class="dim">今日晨报尚未生成 · 点击查看</span></a>')
-    USB_BLOCK = """
-<h2 id="usbrief">美股晨报（隔夜美股→A股板块映射）</h2>
-<div class="riskfoot">今日晨报尚未生成（源目录 投资1组_WB/data/us_market_brief_output/ 无 brief_*.md），取不到即如实展示，不编造。</div>"""
+    _usb_label = USB["date_disp"] if USB else "无"
+    _usb_age_s = f"已过 {_usb_age} 天" if _usb_age is not None else "时效取不到"
+    USB_CARD = (f'<a class="entry" href="market/{ARC_URL}"><b>美股晨报 · 已归档</b><br>'
+                f'<span class="dim">当期无新晨报 ｜ 最近一期 {_usb_label}（{_usb_age_s}）</span></a>')
+    USB_BLOCK = f"""
+<h2 id="usbrief">隔夜晨报 · 归档状态</h2>
+<div class="riskfoot">今日（{BUILD_TS[:10]}）<b>无新晨报</b> —— 周末 / 节假日，或 08:30 任务尚未生成。隔夜美股快照只对生成日当天开盘有效，最近一期 <b>{_usb_label}</b> {_usb_age_s}，<b>已归档，不作为当前市场判断依据</b>；过期全文不再在本页铺开。<br>
+📚 <a href="{ARC_URL}">查看历史晨报归档（{len(USB_ALL)} 期） →</a> ｜ 下一期生成后本区块会自动切换成「今日晨报」紧凑摘要卡。</div>"""
+
+# ---- 历史晨报归档页：过期全文只在此处展示，默认折叠，不占市场分析页主位 ----
+_arc_items = []
+for _arc_i, _arc_fn in enumerate(USB_ALL):
+    _arc_p = os.path.join(USB_DIR, _arc_fn)
+    try:
+        with open(_arc_p, encoding="utf-8") as _arc_f:
+            _arc_txt = _arc_f.read()
+    except OSError:
+        continue
+    if not _arc_txt.strip():
+        continue
+    _arc_d8 = _arc_fn[6:14]
+    _arc_dd = f"{_arc_d8[:4]}-{_arc_d8[4:6]}-{_arc_d8[6:]}"
+    _arc_sum = usbrief_summary(_arc_txt) or "摘要解析不到"
+    _arc_tag = "（当期）" if _arc_d8 == USB_BUILD_DAY else "（已归档 · 不作当前依据）"
+    _arc_open = " open" if _arc_i == 0 else ""
+    _arc_items.append(
+        f'<details class="curind"{_arc_open}><summary>{_arc_dd} 期 {_arc_tag} ｜ {html.escape(_arc_sum[:90])}</summary>'
+        f'<div class="card usb" style="font-size:13px;margin-top:6px">{usbrief_md_html(_arc_txt)}</div></details>')
+_arc_body = f"""
+<h1>美股晨报 · 历史归档</h1>
+<div class="sub">按日期倒序，共 {len(_arc_items)} 期 ｜ <a href="index.html">← 返回市场分析</a> ｜ <a href="../index.html">看板首页</a></div>
+<div class="riskfoot">⚠️ 隔夜美股晨报是<b>当日有效</b>的时效快照，只对其生成日的 A 股开盘有参考价值。此处全部为历史归档，<b>不构成当前判断依据</b>；市场分析页只展示当期晨报的紧凑摘要。</div>
+{''.join(_arc_items) if _arc_items else '<div class="riskfoot">取不到：源目录暂无 brief_*.md，不编造。</div>'}
+"""
 
 # ---------- 仓位提示（模拟盘统一口径 v2） ----------
 POS_NOTE = ("仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；"
@@ -1082,11 +1133,55 @@ body = f"""
 {part_status_html(LATEST)}
 <div class="sub" style="margin:4px 0 10px">Top3 选取规则：取当日卡 csv 中「买入（行业共识≥2 组）」档前 3 条，按卡面原序，未加工。触发价口径随卡面「价格口径」列（2026-10-29 起修复为裸价/实际价）。</div>
 <div class="grid g3">{top3_html}</div>
-<div class="sub" style="margin-top:6px">来源组徽章为卡面记录的单票来源组；共识票数含同行业他组候选。全部为 AI 意向、未成交；完整卡见 <a href="live/{LATEST}.html">实盘专区</a></div>
+<div class="sub" style="margin-top:6px">来源组徽章为卡面记录的单票来源组；共识票数含同行业他组候选。全部为 AI 意向、未成交；完整卡见 <a href="live/{LATEST}.html">实盘专区</a>。<br>⚠️ 此处 Top3 是<b>卡面原序摘要</b>，与当日操作用的 <a href="live/index.html">执行卡（固定腿 ETF + 精选 Top3）</a> 选取规则不同（执行卡按共识票数→当日打分、同行业限 1 只），<b>当日操作以执行卡为准</b>。</div>
 <h2>板块入口</h2>
 <div class="grid g6">{USB_CARD}{entry_html}</div>
 """
 open(f"{OUT}/index.html", "w").write(page("首页", body, depth=0))
+
+# ================= 执行卡（Top3 + ETF）：看板「当日精简主位」统一数据源 =================
+# 2026-11-08 用户举证修复：此前精简只落在企业微信执行卡，看板 _build.py 对 *_exec.csv
+# 零引用，live/ 仍平铺 32 只买入表、track/ 仍列 246 只，用户「看不过来」的问题根本没解决。
+# 现统一：看板默认视图 = 执行卡（固定腿 ETF 1 只 + 精选股票 ≤3 只）；全量一律折叠为备查。
+def exec_card_rows(date):
+    """读 daily_live_card_<date>_exec.csv；缺件/空件返回 None（调用方如实标取不到）。"""
+    _p = os.path.join(CARDS, f"daily_live_card_{date}_exec.csv")
+    if not os.path.exists(_p):
+        return None
+    try:
+        with open(_p, encoding="utf-8-sig", newline="") as _f:
+            _rows = list(csv.DictReader(_f))
+    except (OSError, csv.Error):
+        return None
+    return _rows or None
+
+
+def exec_card_html(date):
+    """执行卡固定 5 列表；无执行卡 → 灰态，不编造、不回落全量表充当精简视图。"""
+    _rows = exec_card_rows(date)
+    if _rows is None:
+        return ('<div class="riskfoot">取不到：本日无精简执行卡'
+                '（daily_live_card_&lt;日期&gt;_exec.csv 未产出），不编造、不拿全量卡冒充；'
+                '下方为全量备查卡。</div>')
+    _tr = ""
+    for _r in _rows:
+        _code = html.escape(_r.get("代码") or "")
+        _name = html.escape(_r.get("名称") or "")
+        _typ = "ETF 固定腿" if (_r.get("类型") or "") == "etf" else "股票"
+        _trig = html.escape(_r.get("买入参考价/触发价") or "—")
+        _sl = html.escape(_r.get("止损价/锚") or "—")
+        _tp = html.escape(_r.get("止盈价/锚") or "—")
+        _cons = html.escape(_r.get("共识票数") or "—")
+        _basis = html.escape(_r.get("价格口径") or "—")
+        _tr += (f'<tr><td><b>{_code}</b> {_name} <span class="tag">{_typ}</span></td>'
+                f'<td>{_trig} <span class="dim">({_basis})</span></td><td>{_sl}</td>'
+                f'<td>{_tp}</td><td>{_cons}</td></tr>')
+    return (f'<table><tr><th>标的</th><th>触发价（口径）</th><th>止损锚</th>'
+            f'<th>止盈锚</th><th>共识票数</th></tr>{_tr}</table>'
+            f'<div class="sub" style="margin-top:6px">共 {len(_rows)} 行 = 固定腿 ETF 1 只 + '
+            f'精选股票 {len(_rows)-1} 只（同行业限 1 只，按共识票数→当日打分排序）；'
+            f'意向非成交，不改动任何模拟盘持仓。全量卡约 30~40 行，已降级为下方折叠备查。</div>')
+
 
 # ================= R1：live/ 入口页 =================
 def date_summary(d):
@@ -1132,9 +1227,12 @@ body = f"""
 <div class="sub">卡片口径：买入档 = 行业共识 ind_n≥2（2026-10-27 起为本卡唯一『推荐』口径）；触发价为裸价/实际价（2026-10-29 修复口径），旧卡以卡面「价格口径」列逐票标注为准；价格列可能为「本组未设」（该组策略口径不产价位，诚实标注；2026-11-04 起 3组已确认有日内价源，此标注随各组件内声明动态）</div>
 <div class="sub" style="margin-top:4px">📊 <a href="../calendar/index.html">战绩日历 →</a>（投资以来逐日战绩月历） ｜ <a href="../track/index.html">推荐跟踪 →</a></div>
 {live_kpis}
+<h2>今日执行卡（{LATEST} · 精简视图）</h2>
+<div class="sub" style="margin:4px 0 8px">用户拍板的「2~3 只股票 + 最多 1 只 ETF」当日操作视图，与企业微信 19:40 推送同源；全量共识表已降级为备查。</div>
+{exec_card_html(LATEST)}
 <div class="card" style="margin-top:14px">
   <span class="lab">最新一日 · {LATEST}（生成 {lf['gen'] or '未上报'}）</span>
-  <b style="font-size:24px">共识买入 {lf['n_buy']} 只</b> <span class="dim">｜ 观察 {lf['n_watch']} 只</span><br>
+  <b style="font-size:18px">全量备查：共识买入 {lf['n_buy']} 只</b> <span class="dim">｜ 观察 {lf['n_watch']} 只（非今日操作清单）</span><br>
   <span class="dim">信号来源 {disp_groups(lf['sources'])} ｜ 缺失 {disp_groups(lf['missing'])}</span><br>
   <span class="dim">风险等级：{lf['risk']}</span><br>
   {part_status_html(LATEST)}
@@ -1151,6 +1249,9 @@ open(f"{OUT}/live/index.html", "w").write(page("实盘推荐", body, depth=1))
 for d in CARD_DATES:
     card_r = card_rows(d)
     facts = card_facts(d)
+    # 历史卡（执行卡 11-06 才启用）不挂「取不到」灰态，避免每页噪音；有卡才显示精简区块
+    _detail_exec = (f'<h2>本日执行卡（精简视图 · 2~3 只股票 + 1 只 ETF）</h2>\n'
+                    f'{exec_card_html(d)}') if exec_card_rows(d) else ""
     styles, cbody = card_html_parts(d)
     _, drows, _, _ = compass(d)
     if facts["n_buy"]:
@@ -1205,11 +1306,15 @@ for d in CARD_DATES:
 <h2 id="compass">实盘风向标</h2>
 {compass_html(d)}
 
-<h2>共识买入（行业共识 ≥2 组 · 意向非成交）</h2>
-{buy_tbl}
+{_detail_exec}
 
-<h2>观察票（未达共识门槛 · 非推荐）</h2>
+<details><summary>全量备查 · 共识买入表（行业共识 ≥2 组 · 意向非成交 · {facts['n_buy']} 只）</summary>
+{buy_tbl}
+</details>
+
+<details><summary>全量备查 · 观察票表（未达共识门槛 · 非推荐 · {facts['n_watch']} 只）</summary>
 {watch_tbl}
+</details>
 {fix_tbl}
 
 <details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
@@ -1515,9 +1620,14 @@ body = f"""
 <div class="sub">覆盖 {CARD_DATES[0]} ~ {CARD_DATES[-1]} 历史每日实盘卡的逐条推荐（2026-10-23 卡仅表头无逐票行，如实为空）｜ 📊 <a href="../calendar/index.html">战绩日历 →</a></div>
 <div class="riskfoot">📌 页头声明：跟踪收益 = 假想在推荐日按 <b>bfq 收盘价</b>买入的纸面收益（bfq 对 bfq，不复权），<b>非各组模拟盘实际持仓盈亏</b>，亦非用户真实账户盈亏。卡面参考价列为卡面原始价（旧卡为 hfq/qfq 复权口径，仅展示、不用于收益计算——收益基准统一改用推荐日 bfq 收盘价，逐行列出）。状态判定：以 bfq <b>收盘价</b>对比卡面止盈/止损，盘中触发不计；仅对卡面价格为裸价（bfq）口径的行判定，复权口径行如实标「不判定」。</div>
 {combo_cards}
+<h2>今日执行卡 · 只需看这几只（{LATEST}）</h2>
+<div class="sub" style="margin:4px 0 8px">上方 6 张统计卡是「历史累计纸面跟踪」口径（{COMBO["n_track"]} 条），不是今天要操作的票。当日操作以执行卡为准。</div>
+{exec_card_html(LATEST)}
+<details><summary>历史累计备查 · 当前在跟踪 {len(CUR_TRACK)} 只（全部历史卡累计，非今日操作清单，默认折叠）</summary>
 <h2>当前在跟踪（{len(CUR_TRACK)} 只 · 买入档且止盈止损未触发）</h2>
 <div class="sub">过滤规则：全部历史卡「动作=买入」且 TRACK 止盈止损状态未触发（含未到期观察、复权口径不判定行）；已触止损/已触止盈移出。排序：共识票数降序、同数按代码升序；按行业折叠展示（行业取自当日上报件 industry 字段，查不到如实标「行业未上报」）。{_rt_note}；浮盈=实时裸价 ÷ 推荐日 bfq 收盘 − 1（TRACK 无 bfq 推荐价的票如实标「口径缺失」不硬算；除权除息不修正，仅参考）。建议仓位/持有时长读各组最新上报件真实字段（实测：仓位仅 3组/4组、持有时长仅 3组/2组/5组提供），缺如实标「未提供」。状态：●蓝=在持、●黄=未到期观察。卡 csv 的股数/金额/本笔最大亏损/占账户% 4 列在全部历史卡恒为空，跟踪视图不展示（数据源未提供，非删数据）。</div>
 {_cur_sections}
+</details>
 <details><summary>完整历史明细（全部日期全部行，共 {COMBO["n_track"]} 条）</summary>
 <h2>逐票跟踪表</h2>
 <table>
@@ -1957,7 +2067,6 @@ if ETF:
     market_body = f"""
 <h1>市场分析</h1>
 <div class="sub">数据源：{ETF_SRC}（1组 维护，腾讯+新浪双源；截至 {AS_OF}，{N_DATA} 个交易日）｜ 收益一律用 close_hfq_mul（后复权乘法），MA/价格位置用 bfq close ｜ 本页全部数字由 _build.py 每次构建时从源文件动态计算，无手工写死</div>
-{USB_BLOCK}
 <h2>当前状态（as_of {AS_OF} · 分位 = 全历史滚动窗口法，含当前值）</h2>
 <div class="grid g5">{stat_cards}</div>
 <div class="sub" style="margin-top:6px">分位条按看板涨红跌绿主题：高分位红（历史偏强）/ 低分位绿（历史偏弱）/ 中段黄。分位 = 历史上同长度滚动窗口收益 ≤ 当前值的占比。</div>
@@ -1978,14 +2087,17 @@ if ETF:
 <tr><td>④</td><td style="white-space:normal">国内政策实物工作量落地</td><td><span class="tag">☐ 未触发</span></td></tr>
 </table>
 <div class="sub">以上 4 条为<b>人工跟踪项</b>：看板不自动判（无对应自动化数据源），状态格由用户人工维护；构建脚本不写触发状态，只在每次重建时还原为「未触发」底稿。</div>
+{USB_BLOCK}
 """
 else:
     market_body = f"""
 <h1>市场分析</h1>
 <div class="sub">数据源：{ETF_SRC}</div>
 <div class="riskfoot">取不到：数据源文件缺失、列不全或数据行不足 300（本页全部指标依赖该文件，缺源不编造、不估算）。请先修复 510300 数据日更后重跑 _build.py。</div>
+{USB_BLOCK}
 """
 os.makedirs(f"{OUT}/market", exist_ok=True)
 open(f"{OUT}/market/index.html", "w").write(page("市场分析", market_body, depth=1))
+open(f"{OUT}/market/usbrief_archive.html", "w").write(page("美股晨报归档", _arc_body, depth=1))
 
 print("v2 build done | cards:", CARD_DATES, "| latest:", LATEST)

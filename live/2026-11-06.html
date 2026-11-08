@@ -115,7 +115,10 @@ a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid va
   <div class="sub" style="margin-top:4px">历史件口径说明：历史件的口径文本为当时原样，未回改；个别旧卡因 60 字截断留下的半句属 PIT 证据，不补全、不伪造。2026-11-04 起渲染侧改为按句读点截断，仅作用于新生成的页面。</div>
 </div>
 
-<h2>共识买入（行业共识 ≥2 组 · 意向非成交）</h2>
+<h2>本日执行卡（精简视图 · 2~3 只股票 + 1 只 ETF）</h2>
+<table><tr><th>标的</th><th>触发价（口径）</th><th>止损锚</th><th>止盈锚</th><th>共识票数</th></tr><tr><td><b>510300</b> 沪深300ETF <span class="tag">ETF 固定腿</span></td><td>4.124 <span class="dim">(bfq)</span></td><td>—</td><td>—</td><td>N/A</td></tr><tr><td><b>sh603707</b> 健友股份 <span class="tag">股票</span></td><td>8.880 <span class="dim">(qfq)</span></td><td>7.990</td><td>10.660</td><td>3</td></tr><tr><td><b>sh688798</b> 艾为电子 <span class="tag">股票</span></td><td>61.250 <span class="dim">(裸价)</span></td><td>55.125</td><td>70.438</td><td>3</td></tr><tr><td><b>sz000400</b> 许继电气 <span class="tag">股票</span></td><td>25.250 <span class="dim">(裸价)</span></td><td>22.725</td><td>29.037</td><td>3</td></tr></table><div class="sub" style="margin-top:6px">共 4 行 = 固定腿 ETF 1 只 + 精选股票 3 只（同行业限 1 只，按共识票数→当日打分排序）；意向非成交，不改动任何模拟盘持仓。全量卡约 30~40 行，已降级为下方折叠备查。</div>
+
+<details><summary>全量备查 · 共识买入表（行业共识 ≥2 组 · 意向非成交 · 32 只）</summary>
 <table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sh688798</td><td>艾为电子</td>
 <td>买入</td><td><span class="gbadge">1组</span> <span class='dim'>共识 3/5</span></td>
 <td>电子</td><td>61.250 <span class="dim">(裸价)</span></td>
@@ -247,8 +250,9 @@ a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid va
 <td>4%（模拟盘等权）</td></tr></table>
 <div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>
 <div class="sub">仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。</div>
+</details>
 
-<h2>观察票（未达共识门槛 · 非推荐）</h2>
+<details><summary>全量备查 · 观察票表（未达共识门槛 · 非推荐 · 8 只）</summary>
 <table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sz002149</td><td>西部材料</td>
 <td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
 <td>有色金属</td><td>37.740 <span class="dim">(裸价)</span></td>
@@ -284,6 +288,7 @@ a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid va
 <td>0%（观察仓）</td></tr></table>
 <div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>
 <div class="sub">仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。</div>
+</details>
 <h2>ETF 固定腿（非共识非推荐，每日无条件展示）</h2><table><tr><th>代码</th><th>名称</th><th>触发价</th><th>仓位提示</th></tr><tr><td>510300</td><td>沪深300ETF</td><td>4.124 <span class="dim">(bfq)</span></td><td>固定腿（非共识非推荐），模拟盘 ETF 腿仓位待引擎扩池</td></tr></table>
 
 <details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
@@ -1061,5 +1066,5 @@ new_picks 覆盖：5/5 组已提供字段（其中 4 组当日有新增推荐、
 <div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损为机械参考位，跳空/跌停情形条件单可能不成交。</div>
 
 </div>
-<footer>数据截至：2026-11-08 14:41（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+<footer>数据截至：2026-11-08 15:18（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
 </body></html>
