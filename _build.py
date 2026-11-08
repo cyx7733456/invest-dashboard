@@ -1674,35 +1674,136 @@ body = f"""
 """
 open(f"{OUT}/strategies/index.html", "w").write(page("策略档案", body, depth=1))
 
-STATUS = [
- ("green", "canon 主K线（3组 hfq）", "公共/数据/kline_25y_QD_hfq.csv",
-  "实测末行 date=2026-10-27，总数据行 16,230,290（wc -l 16,230,291 含表头），mtime 2026-10-27 19:05。日更正常。"),
- ("green", "ETF 510300（1组 源）", "公共/数据/kline_etf_510300_WB.csv",
-  "实测末行 date=2026-10-27（2026-10-29 复测，3,502 个数据行，16 列齐全）——10-25 时曾停在 10-23，现已恢复日更；市场分析页依赖本文件。"),
- ("grey", "main_flow 主力资金流", "—", "已冻结（2026-10-27 用户裁定不恢复）；恢复需用户明确推翻。"),
- # 实时/分钟价（2026-11-05 接入）：本次构建腾讯接口探针通过 → 灰灯改绿；失败 → 保持灰灯并如实注明原因
- (("green", "实时/分钟价", "腾讯 qt.gtimg.cn（公开接口，构建时拉取）",
-   "2026-11-05 腾讯公开接口探针通过，已接入跟踪表现价（构建时点快照，非盘中推送）；禁止写入 canon。") if RT_OK
-  else ("grey", "实时/分钟价", "—",
-   f"本次构建腾讯接口接入失败（{RT_ERR or '全部代码取不到行情'}），如实注明；模式仍 = 收盘后决策、次日开盘执行。探针继续。")),
- ("grey", "券商委托回报", "—", "无 API，待用户手工导入。"),
- ("grey", "公告/新闻催化剂", "—", "未采集（探路中）。"),
- ("yellow", "canon 2026-09-25 全市场缺日", "公共/数据/canon_hfq_patch_20260925_QD.csv",
+# ================= data-status：构建时逐项实测（2026-11-08 修复） =================
+# ⚠️ 勿用模块级 _dt：脚本第458行 K 线循环已把它覆盖成日期字符串（第1638行有前人警示）。
+from datetime import datetime as _DS_DT
+# ① 绿灯误渲染成红色：全站 :root 中 --up:#e5544b 是「涨/看多」红、--dn:#3fb950 才是绿
+#    （A股涨红跌绿）。原 lights 把 green 映射到 class "up"，圆点因此是红的。
+#    改用仅本页内联的 .ok{color:var(--dn)}，不动全站公共 CSS，避免其他页配色回归。
+# ② 原 STATUS 是 2026-10-27 硬编码静态快照，页脚却每次构建刷新日期 → 正文与页脚自相矛盾。
+#    改为每次构建现读源文件（行数/末行日期/大小/mtime），取不到写「取不到」，绝不沿用旧值。
+# ③ 补列 11-06~11-08 新打通的消息面/事件源，删除过期的「公告/新闻催化剂 未采集（探路中）」。
+# 绿灯判据：文件存在且 mtime 距今 ≤4 自然日；黄=停更或已知缺陷；灰=未接入/有意冻结/未落盘。
+
+def _ds_stat(rel, sep="|", date_idx=0, csv_mode=False):
+    """现读源文件；返回 {n,mb,mt_s,mt,last}，缺文件返回 None。大文件走二进制块计数。"""
+    p = os.path.join(ROOT, rel)
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None
+    mt = _DS_DT.fromtimestamp(st.st_mtime)
+    d = {"n": 0, "mb": st.st_size / 1048576.0, "mt_s": mt.strftime("%Y-%m-%d %H:%M"),
+         "mt": mt, "last": "取不到"}
+    if csv_mode:
+        try:
+            with open(p, "r", encoding="utf-8-sig", newline="") as fh:
+                rd = csv.reader(fh, delimiter=sep)
+                next(rd, None)
+                rec = None
+                for rec in rd:
+                    d["n"] += 1
+                if rec and len(rec) > date_idx:
+                    d["last"] = rec[date_idx].strip()[:19] or "取不到"
+        except Exception:
+            d["last"] = "取不到"
+    else:
+        with open(p, "rb") as fh:
+            while True:
+                buf = fh.read(8 << 20)
+                if not buf:
+                    break
+                d["n"] += buf.count(b"\n")
+        d["n"] = max(0, d["n"] - 1)
+        try:
+            with open(p, "rb") as fh:
+                fh.seek(max(0, st.st_size - 65536))
+                tail = fh.read().decode("utf-8", "replace").rstrip("\r\n").split("\n")
+            cells = (tail[-1] if tail else "").split(sep)
+            d["last"] = cells[date_idx].strip()[:19] if len(cells) > date_idx else "取不到"
+        except Exception:
+            pass
+    return d
+
+
+def _ds_row(cat, name, rel, sep, date_idx, policy, note, csv_mode=False):
+    """返回 (light, 层级, 名称, 源路径, 说明)。policy: auto / frozen / known / api"""
+    if policy == "frozen":
+        return ("grey", cat, name, rel or "—", note)
+    if policy == "known":
+        return ("yellow", cat, name, rel or "—", note)
+    if policy == "api":
+        return (("green", cat, name, rel, note) if RT_OK
+                else ("grey", cat, name, rel or "—",
+                      f"本次构建腾讯接口接入失败（{RT_ERR or '全部代码取不到行情'}）；模式仍 = 收盘后决策、次日开盘执行。"))
+    s = _ds_stat(rel, sep, date_idx, csv_mode) if rel else None
+    if s is None:
+        return ("grey", cat, name, rel or "—", "源文件取不到（未落盘 / 路径缺失）。" + note)
+    age = max(0.0, (_DS_DT.now() - s["mt"]).total_seconds() / 86400.0)
+    fact = (f"{s['n']:,} 行｜{s['mb']:,.1f} MB｜mtime {s['mt_s']}"
+            f"｜末行第{date_idx}列 {s['last']}｜文件龄 {age:.1f} 天。")
+    if age <= 4:
+        return ("green", cat, name, rel, note + " " + fact)
+    return ("yellow", cat, name, rel, note + " " + fact + f"⚠️ 文件龄已超 4 天，请核查定时任务。")
+
+
+_exec_csvs = sorted(
+    f for f in (os.listdir(CARDS) if os.path.isdir(CARDS) else [])
+    if f.startswith("daily_live_card_") and f.endswith("_exec.csv"))
+_exec_rel = (os.path.relpath(os.path.join(CARDS, _exec_csvs[-1]), ROOT)
+             if _exec_csvs else None)
+
+DS_SPEC = [
+ ("价格层", "canon 主K线（3组 hfq）", "公共/数据/kline_25y_QD_hfq.csv", "|", 1, "auto",
+  "五组回测/信号共用 canon；末行日期按文件序读取，非全市场 date_max。"),
+ ("价格层", "ETF 510300（1组 源）", "公共/数据/kline_etf_510300_WB.csv", "|", 0, "auto",
+  "市场分析页依赖本文件；bfq 价，volume_hand 已对齐「手」。"),
+ ("价格层", "实时/分钟价", "腾讯 qt.gtimg.cn（公开接口，构建时拉取）", "", 0, "api",
+  "构建时点快照，非盘中推送；禁止写入 canon。"),
+ ("价格层", "main_flow 主力资金流", "—", "", 0, "frozen",
+  "已冻结（2026-10-27 用户裁定不恢复）；恢复需用户明确推翻。"),
+ ("价格层", "券商委托回报", "—", "", 0, "frozen", "无 API，待用户手工导入。"),
+ ("事件层", "7×24 快讯", "公共/数据/news_7x24_WB.csv", "|", 1, "auto",
+  "新浪 7×24 全局快讯；2026-10-15~11-01 约 17 天历史空洞不可恢复，不回填。", True),
+ ("事件层", "限售解禁", "公共/数据/lift_ban_WB.csv", ",", 3, "auto",
+  "东财 RPT_LIFT_STAGE，未来解禁日程。", True),
+ ("事件层", "股东增减持", "公共/数据/shareholder_trade_WB.csv", ",", 10, "auto",
+  "东财 RPT_SHARE_HOLDER_INCREASE。", True),
+ ("事件层", "除权/除息排期", "公共/数据/exright_schedule_WB.csv", "|", 3, "auto",
+  "东财 RPT_SHAREBONUS_DET；2026-11-06 修复 22 天断链，现排 17:20 日更（plist 待真机 bootstrap）。"),
+ ("事件层", "业绩预告", "公共/数据/performance_forecast_WB.csv", ",", 1, "auto",
+  "东财 RPT_PUBLIC_OP_NEWPREDICT。", True),
+ ("事件层", "业绩快报", "公共/数据/performance_express_WB.csv", ",", 1, "auto",
+  "东财 RPT_FCI_PERFORMANCEE。", True),
+ ("事件层", "财报实际披露日", "公共/数据/ann_date_WB_incr.csv", ",", 2, "auto",
+  "东财 RPT_LICO_FN_CPD 增量；与 V9 冻结件 ann_date_HRS.csv 分列，不可混用。", True),
+ ("事件层", "回购公告", "公共/数据/buyback_WB.csv", ",", 1, "auto",
+  "东财公告；⚠️ 当前 date 为 8 位 YYYYMMDD，与其余 10 位源不同，展示层窗口待校正。", True),
+ ("事件层", "财报预约披露（前瞻快照）", "公共/数据/appoint_date_WB.csv", ",", 3, "auto",
+  "东财 RPT_PUBLIC_BS_APPOIN；前瞻快照须每日整体替换，预约日绝不进 V9 anndate_strict 前视闸门。", True),
+ ("治理层", "V9 财报披露日（冻结件）", "公共/数据/ann_date_HRS.csv", ",", 2, "frozen",
+  "v9_live_build.py / v9_data_fingerprint.py 指纹锁定的冻结件，有意不刷新，非故障。"),
+ ("治理层", "canon 2026-09-25 全市场缺日", "公共/数据/canon_hfq_patch_20260925_QD.csv", "|", 1, "known",
   "已知项：canon 主K线 2026-09-25 全市场缺一日，曾有补丁文件；页内如实保留黄灯提示。"),
+ ("交付层", "实盘执行卡（Top3+ETF）", _exec_rel, ",", 0, "auto",
+  "双层卡精简版，备查主卡不变；企业微信 19:40 推送。" if _exec_rel else "暂无执行卡产出。", True),
 ]
-lights = {"green": ("绿灯", "up"), "yellow": ("黄灯", "warn"), "grey": ("灰灯", "dim")}
-# 2026-11-05 人话化：纯圆点 + 悬浮说明 + 表格上方图例；灯名文字不再入格
-light_tip = {"green": "正常，日更中", "yellow": "已知缺日（详见说明，非日更中断）",
-             "grey": "未接入或已冻结（非故障）"}
+STATUS = [_ds_row(*x) for x in DS_SPEC]
+lights = {"green": ("绿灯", "ok"), "yellow": ("黄灯", "warn"), "grey": ("灰灯", "dim")}
+light_tip = {"green": "正常，日更中（文件龄 ≤4 天）",
+             "yellow": "停更待查 或 已知缺陷（详见说明）",
+             "grey": "未接入 / 有意冻结 / 未落盘（非故障）"}
 srows = "".join(
-    f"""<tr><td><span class="{lights[s][1]}" title="{light_tip[s]}">●</span></td><td>{t}</td><td class="dim">{p}</td><td style="white-space:normal">{d}</td></tr>"""
-    for s, t, p, d in STATUS)
+    f"""<tr><td><span class="{lights[s][1]}" title="{light_tip[s]}">●</span></td><td class="dim" style="text-align:left">{c}</td><td>{t}</td><td class="dim" style="white-space:normal;word-break:break-all;font-size:11px">{p}</td><td style="white-space:normal">{d}</td></tr>"""
+    for s, c, t, p, d in STATUS)
+_now = _DS_DT.now().strftime("%Y-%m-%d %H:%M")
 body = f"""
+<style>.ok{{color:var(--dn)}}</style>
 <h1>数据状态</h1>
-<div class="sub">逐项实测于 2026-10-27 深夜；实测依据（文件路径 + 末行/行数 + mtime）见 build_report.md</div>
-<div class="sub" style="margin-top:8px"><span class="up">●</span> 绿=正常日更 ｜ <span class="warn">●</span> 黄=已知缺日 ｜ <span class="dim">●</span> 灰=未接入/已冻结（非故障）</div>
+<div class="sub">本页于 {_now} 由构建脚本逐项现读源文件自动生成；行数 / 末行日期 / 文件大小 / mtime 均取自文件本身，取不到写「取不到」，不沿用历史快照。历史实测依据见 build_report.md。</div>
+<div class="sub" style="margin-top:8px"><span class="ok">●</span> 绿=正常日更（文件龄 ≤4 天） ｜ <span class="warn">●</span> 黄=停更待查/已知缺陷 ｜ <span class="dim">●</span> 灰=未接入/有意冻结/未落盘（非故障）</div>
 <table style="margin-top:8px">
-<tr><th>状态</th><th>数据项</th><th>源文件</th><th>说明</th></tr>
+<tr><th>状态</th><th>层级</th><th>数据项</th><th>源文件</th><th>说明</th></tr>
 {srows}
 </table>
 """
