@@ -94,22 +94,53 @@ def load_report(g, date):
         return json.load(f)
 
 # ---------- 净值 ----------
+# 缺陷A修复（2026-11-16，项目 11-09 裁定落地）：部分组（实测仅 5组 HRS）的
+# simulated_nav_<组>.csv 含 tier 列且「同一交易日有多行」——aggressive / defensive /
+# steady 三档各一行（HRS 实测 46 个交易日 × 3 档 = 138 数据行）。旧逻辑把三档
+# 串成一条时间序列，相邻行跨档/跨日混算日收益，日胜率被算成 16/137=11.7%（失真）。
+# 修复：读表时按 tier 分组；多档组（HRS）本组净值序列只取 steady 档
+# （日胜率 / 区间收益 / 净值曲线 / 持仓数一律同源），其余组（同日仅 1 行）逻辑不变。
+# 11-09 裁定：五组序列不可比、不得排名/冠军/总分；aggressive/defensive 历史篮子
+# 不可得 → 排除一切横比，横比仅取 steady。本修复不新增任何排名/总分/收益排序内容。
+HRS_TIER = "steady"                 # 多档组中唯一采信的档（11-09 裁定）
+TIER_ROWS = {}                      # g -> {tier: [(date, act_nav, n_hold)]}；非多档组为 None
+MULTI_TIER = {}                     # g -> bool：是否「含 tier 列且同日多行」
 navs = {}
 REF_NAV = {}   # g -> (最新日期, ref_nav) 或 None（2026-11-05 sim 页新增：参照净值 + 错失收益，HRS 20:33 函建议、用户批准）
 for g in GROUPS:
     rows = []
     _ref = None
+    _ref_by_tier = {}
+    _by_tier = {}
     with open(f"{DATA}/simulated_nav_{g}.csv", newline="") as f:
-        for r in csv.DictReader(f, delimiter="|"):
-            rows.append((r["date"], float(r["act_nav"]), int(r["n_hold"])))
+        _rdr = csv.DictReader(f, delimiter="|")
+        _has_tier = bool(_rdr.fieldnames) and "tier" in _rdr.fieldnames
+        for r in _rdr:
+            _tup = (r["date"], float(r["act_nav"]), int(r["n_hold"]))
+            rows.append(_tup)
+            _t = (r.get("tier") or "").strip() if _has_tier else ""
+            if _has_tier:
+                _by_tier.setdefault(_t, []).append(_tup)
             _v = r.get("ref_nav")  # 缺列/空值/非数值 → 如实「未提供」，禁编造
             if _v not in (None, ""):
                 try:
-                    _ref = (r["date"], float(_v))
+                    _fv = float(_v)
+                    _ref = (r["date"], _fv)          # 旧逻辑：逐行取最后一个非空 ref_nav
+                    if _has_tier:
+                        _ref_by_tier[_t] = (r["date"], _fv)
                 except ValueError:
                     pass
-    navs[g] = rows
-    REF_NAV[g] = _ref
+    # 判据：含 tier 列 且 任一 date 在文件中出现 >1 行（同日多档）
+    _per_date = {}
+    for _x in rows:
+        _per_date[_x[0]] = _per_date.get(_x[0], 0) + 1
+    _multi = _has_tier and (max(_per_date.values()) if _per_date else 0) > 1
+    MULTI_TIER[g] = _multi
+    TIER_ROWS[g] = _by_tier if _multi else None
+    # 多档组：本组序列只取 steady 档（实算，不写死行数）；非多档组：原全量序列不变
+    navs[g] = _by_tier[HRS_TIER] if (_multi and _by_tier.get(HRS_TIER)) else rows
+    # 多档组 ref_nav 只认 steady 档（避免取到被排除档）；其余组沿用旧 _ref
+    REF_NAV[g] = _ref_by_tier.get(HRS_TIER) if _multi else _ref
 
 def metrics(g):
     rows = navs[g]
@@ -123,6 +154,45 @@ def metrics(g):
     }
 
 M = {g: metrics(g) for g in GROUPS}
+
+# ---------- 缺陷B（2026-11-16）：显式「数据截至 YYYY-MM-DD ｜ 距今 N 个交易日」标签 ----------
+# 背景：全站 footer(:994) 的「数据截至：BUILD_TS」是构建时刻、会被误读成数据时刻；
+#       track 组合数据停在 meta.as_of（本次构建 2026-11-06），净值/价格源已到 2026-11-13，
+#       页面「新」但数据「旧」。本标签数据一律取自各自真实数据源，⛔ 不拿 BUILD_TS 冒充。
+# 判据（与验收报告一致，写死在此）：
+#  1) 交易日历 = 五组 simulated_nav_<组>.csv 的 date 并集 —— 每个日期都是有净值的
+#     实际交易日，天然即交易日历；绝不用自然日、不用 BUILD_TS。
+#  2) 「今」= 该日历的最大交易日（页面能证明存在的最新交易日）。
+#  3) N（距今交易日数）= 日历中严格大于「数据截至日」且 ≤「今」的交易日个数，
+#     即「两组数据日期之差」按交易日换算：N = #{d | as_of < d <= 今}。
+#  4) 数据截至日取不到 / 非合法日期 / 早于日历覆盖首日 / 日历为空 ⇒ N 写「取不到」，
+#     只显示「数据截至 …」；⛔ 绝不拿自然日差冒充交易日。
+#  5) 数据截至日 >=「今」⇒ N=0（数据不落后于最新交易日）。
+# 数据源：track 页 = portfolio_track_WB.json 的 meta.as_of；
+#         sim 页 = 各组 simulated_nav_<组>.csv 最新日期（即并集最大日）。
+TRADING_DAYS = sorted({r[0] for g in GROUPS for r in navs[g]})
+ASOF_TODAY = TRADING_DAYS[-1] if TRADING_DAYS else None
+SIM_ASOF = ASOF_TODAY  # sim 页数据截至 = 各组 CSV 最新日期（并集最大值）
+
+def asof_label(asof):
+    """返回 '数据截至 X ｜ 距今 N 个交易日'；取不到/越界一律如实标「取不到」。"""
+    if asof is None or not isinstance(asof, str) or not asof.strip():
+        return "数据截至 取不到 ｜ 距今 取不到 个交易日"
+    a = asof.strip()[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", a):
+        return f"数据截至 {html.escape(asof[:40])} ｜ 距今 取不到 个交易日"
+    # 格式合法 ≠ 日期真实存在（如 2026-13-99）：用 calendar.monthrange 复核，
+    # 非法日期一律 N「取不到」，不猜、不拿它算 N（_dt 全局已被 K 线循环覆盖，勿用）
+    try:
+        _y, _m, _dd = int(a[:4]), int(a[5:7]), int(a[8:10])
+        if not (1 <= _m <= 12 and 1 <= _dd <= _pycal.monthrange(_y, _m)[1]):
+            raise ValueError
+    except ValueError:
+        return f"数据截至 {html.escape(a)} ｜ 距今 取不到 个交易日"
+    if not TRADING_DAYS or ASOF_TODAY is None or a < TRADING_DAYS[0]:
+        return f"数据截至 {html.escape(a)} ｜ 距今 取不到 个交易日"
+    n = len([d for d in TRADING_DAYS if a < d <= ASOF_TODAY]) if a <= ASOF_TODAY else 0
+    return f"数据截至 {html.escape(a)} ｜ 距今 {n} 个交易日"
 
 def latest_report(g):
     cands = sorted(f for f in os.listdir(DATA)
@@ -991,7 +1061,7 @@ def page(title, body, depth=0):
         f'<a href="{pre}market/index.html"{" class=on" if title == "市场分析" else ""}>市场分析</a>'
         f'<a href="{pre}strategies/index.html">策略档案</a>'
         f'<a href="{pre}data-status/index.html">数据状态</a>')
-    footer = f'<footer>数据截至：{BUILD_TS} ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>'
+    footer = f'<footer>页面构建时刻：{BUILD_TS} ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>'
     # v2.1：全站密码门锁（auth.js 置于 <head> 首位，未认证同步隐藏正文防闪烁）
     return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1117,7 +1187,7 @@ body = f"""
 <div class="sub">今日 {TODAY} ｜ 投资1组承建 ｜ 模拟净值起点 2026-09-03/04，全部数字可溯源至公共数据集与每日上报件</div>
 <h2>五组模拟净值总览</h2>
 <div class="grid g5">{nav_cards}</div>
-<div class="sub" style="margin-top:6px">日胜率口径：act_nav 日收益&gt;0 的交易日 ÷ 总交易日；详见模拟盘赛马页。净值列为各组 act_nav（上报口径，扣费口径未统一：仅 5组 csv 另报 nav_net 净列、与 act_nav 恒差约 45bp 累计费差，其余组未提供净列）——看板不混用两列以免口径失真，跨组比较时知悉该差异（5组 2026-10-28 建议4）。</div>
+<div class="sub" style="margin-top:6px">日胜率口径：act_nav 日收益&gt;0 的交易日 ÷ 总交易日；详见模拟盘赛马页。净值列为各组 act_nav（上报口径，扣费口径未统一：仅 5组 csv 另报 nav_net 净列、与 act_nav 恒差约 45bp 累计费差，其余组未提供净列）——看板不混用两列以免口径失真，跨组比较时知悉该差异（5组 2026-10-28 建议4）。2026-11-16 起：5组 HRS 三档 CSV 已按 tier 分组、仅 steady 档计算日胜率与区间收益，aggressive/defensive 不参与横比，详见模拟盘赛马页。</div>
 <h2>实盘风向标（{LATEST}）</h2>
 <div class="compass">
   <div class="cbarwrap">{home_segs}</div>
@@ -1378,7 +1448,12 @@ def hold_table(g):
 <td>{upc}</td><td>{gv('action')}</td></tr>"""
     note = ""
     if g == "HRS":
-        note = '<div class="sub">注：5组 上报件无 unreal_pct 字段 → 浮盈列如实标「未知」；该件 nav=0.840125 与 simulated_nav_HRS.csv 最新 act_nav=0.7705 口径不同（CSV 为 steady 档净值），本页净值一律以 CSV 为准。</div>'
+        # 2026-11-16 lead 授权：删掉旧写死常数（0.840125 / 0.7705），改为中性表述 +
+        # 从 navs["HRS"]（steady 档）动态实算最新 act_nav，⛔ 不残留任何未经实算的常数
+        _hrs_act = navs["HRS"][-1][1]
+        note = (f'<div class="sub">注：5组 上报件无 unreal_pct 字段 → 浮盈列如实标「未知」；'
+                f'该件净值与 simulated_nav_HRS.csv 的 steady 档口径不同，'
+                f'本页净值一律以 CSV 为准（steady 档最新 act_nav={_hrs_act:.4f}，由 CSV 实算）。</div>')
     if g == "QD":
         note = '<div class="sub">注：3组 现价为 canon 后复权（计价口径），非市价；本件持仓 entry 无空值。</div>'
     if g == "CX":
@@ -1449,9 +1524,31 @@ for g in GROUPS:
 
 pnl_btns = "".join(f'<button id="pbtn_{g}" onclick="showP(\'{g}\')"{" class=on" if g == "WB" else ""}>{GD[g]}</button>' for g in GROUPS)
 
+# 缺陷B：sim 页显式数据截至标签（数据源 = 各组 simulated_nav_<组>.csv 最新日期）
+SIM_ASOF_BADGE = ('<div class="sub" style="margin-top:6px">'
+                  '数据截至标签（模拟净值数据源：各组 simulated_nav_&lt;组&gt;.csv 最新日期）：'
+                  f'<b>{asof_label(SIM_ASOF)}</b></div>')
+# 缺陷A：HRS 口径标注（数字全部实算，不写死）
+_hrs_tiers = TIER_ROWS.get("HRS") or {}
+_hrs_steady = _hrs_tiers.get(HRS_TIER, [])
+if MULTI_TIER.get("HRS") and _hrs_steady:
+    _h = M["HRS"]
+    _HRS_NOTE = (
+        '<div class="sub" style="margin-top:6px">5组（HRS）口径修正（2026-11-16，项目 11-09 裁定）：'
+        'simulated_nav_HRS.csv 同一交易日含 aggressive / defensive / steady 三档（每天 3 行），'
+        '旧算法把三档串成一条时间序列算日胜率（口径失真）。现按 tier 分组、'
+        f'<b>仅 steady 档</b>计算日胜率与区间收益：{len(_hrs_steady)} 个交易日 → {len(_hrs_steady)-1} 个日收益，'
+        f'实算 {_h["win"]}/{_h["n"]} = {_h["winrate"]*100:.1f}%。'
+        '<b>aggressive / defensive 历史篮子不可得，不参与横比</b>；'
+        '五组序列不可比，看板不做排名 / 冠军 / 总分。</div>')
+else:
+    _HRS_NOTE = ('<div class="sub" style="margin-top:6px">5组（HRS）口径：按 tier 分组仅 steady 档；'
+                 'steady 档取不到 → 如实标注，不计算日胜率。</div>')
+
 body = f"""
 <h1>模拟盘赛马</h1>
 <div class="sub">数据源：公共/数据/simulated_nav_&lt;组&gt;.csv ｜ 指标口径：日胜率 = act_nav 日收益&gt;0 的交易日 ÷ 总交易日（各样本 ≥20 天）；区间累计收益 = 末值/首值 − 1</div>
+{SIM_ASOF_BADGE}
 <h2>五组净值曲线（act_nav · 各组上报口径）</h2>
 <div class="card" style="padding:18px"><canvas id="navchart" height="110"></canvas></div>
 <h2>赛马指标表</h2>
@@ -1459,6 +1556,7 @@ body = f"""
 <tr><th>组</th><th>最新净值 (act_nav)</th><th>参照净值 (ref_nav)</th><th>错失收益 (ref−act)</th><th>当日涨跌</th><th>区间累计收益</th><th>日胜率</th><th>当前持仓</th><th>样本区间</th></tr>
 {rows}
 </table>
+{_HRS_NOTE}
 <div class="sub" style="margin-top:6px">3组/4组 最初两档 act_nav 有 1.0/0.997 等起点差异；1组 2026-09-04 首日 act_nav=0.997（含建仓成本）。</div>
 <div class="sub" style="margin-top:4px">净/毛口径（5组 2026-10-28 建议4）：本页一律用 act_nav；仅 5组 csv 提供 nav_net（净，已扣成本，与 act_nav 恒差约 45bp 累计费差），其余组无净列 → 跨组比较存在扣费口径差异，看板不混用两列，如实标注而非替换。</div>
 <div class="sub" style="margin-top:4px">参照净值 ref_nav 与错失收益（2026-11-05 新增，HRS 2026-11-05 20:33 函建议、用户批准）：ref_nav 取各组 simulated_nav_&lt;组&gt;.csv 同件 ref_nav 列最新值（与 act_nav 同件同行、同源同基可比；缺列/空值如实「未提供」，禁编造）；错失收益 = 最新 ref_nav − act_nav，<b>正=参照跑赢实际（含空仓闸门错失的行情），负=实际跑赢参照</b>，同件两列直接相减属同源可比，不存在「口径不可比」情形（缺列才不可算）。<b>空仓闸门日实际收益贡献恒 0、act_nav 原地冻结，属闸门正确行为，非数据未更新</b>（HRS 函事实：11-03~11-05 三天参照 +4.69%、实际 0；本 CSV 实测 5组 ref_nav 11-03 0.8678 → 11-05 0.9167、act_nav 冻结 0.8754，累计错失 +0.0413）。</div>
@@ -1780,8 +1878,16 @@ def _pt_state(row):
 def portfolio_track_html():
     """track 页主位：券商式有限容量跟踪组合表。JSON 不可用时只回一行灰态。"""
     _d = _pt_load()
+    # 缺陷B：track 页显式数据截至标签，数据源 = portfolio_track_WB.json 的 meta.as_of
+    # （⛔ 不拿 BUILD_TS、不用价格源 k_asof 冒充「组合数据截至」）
+    _ao_raw = _d["meta"].get("as_of") if _d else None
+    _asof_badge = (
+        '<div class="sub" style="margin:4px 0 8px">'
+        '数据截至标签（跟踪组合数据源：portfolio_track_WB.json · meta.as_of）：'
+        f'<b>{asof_label(_ao_raw)}</b></div>')
     if _d is None:
-        return ('<div class="riskfoot" title="portfolio_track_WB.json 未产出 / 解析失败 / '
+        return (_asof_badge +
+                '<div class="riskfoot" title="portfolio_track_WB.json 未产出 / 解析失败 / '
                 '结构不符；不编造、不拿执行卡或全量跟踪表冒充、不沿用旧快照">'
                 '组合状态尚未生成（纸面推演，取不到）</div>')
     _meta = _d["meta"]
@@ -1929,7 +2035,7 @@ def portfolio_track_html():
                       '<th>状态迁移</th><th>事件</th></tr>'
                       f'{_dtr}</table></details>')
 
-    return (_disc + _meta_line + '<table>' + _head + _trs + '</table>'
+    return (_asof_badge + _disc + _meta_line + '<table>' + _head + _trs + '</table>'
             + _over_note + _foot + _ex_sec + _days_html)
 
 body = f"""
