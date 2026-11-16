@@ -1857,10 +1857,16 @@ def _pt_basis(row, is_etf):
 
 
 def _pt_anchor(row):
-    _sl, _tp = row.get("stop_loss_anchor"), row.get("take_profit_anchor")
-    _sl_s = html.escape(str(_sl)) if _sl not in (None, "") else '<span class="dim">未提供</span>'
-    _tp_s = html.escape(str(_tp)) if _tp not in (None, "") else '<span class="dim">未提供</span>'
-    return f"止损 {_sl_s} / 止盈 {_tp_s}"
+    """止损 / 止盈锚：展示 meta 里的 anchor 数值；tooltip 带原始卡面值（sl_raw_anchor /
+    tp_raw_anchor）原文，并注明标度差异 —— hfq 原始卡面价与 bfq 纸面纳入价不可直接比较。"""
+    _sl, _tp = _pt_num(row.get("stop_loss_anchor")), _pt_num(row.get("take_profit_anchor"))
+    _slr, _tpr = _pt_num(row.get("sl_raw_anchor")), _pt_num(row.get("tp_raw_anchor"))
+    _sl_s = _sl if _sl else '<span class="dim">未提供</span>'
+    _tp_s = _tp if _tp else '<span class="dim">未提供</span>'
+    _tip = (f"原始卡面值：止损 {_slr or '未提供'} / 止盈 {_tpr or '未提供'}。"
+            "原始卡面值为该卡当日的绝对价（可能是 hfq 标度），与纸面纳入价不同标度，勿直接比较。")
+    return (f'<span title="{html.escape(_tip, quote=True)}">'
+            f'止损 {_sl_s} / 止盈 {_tp_s}</span>')
 
 
 def _pt_state(row):
@@ -1875,16 +1881,209 @@ def _pt_state(row):
     return f"{_a_s} → {_b_s}"
 
 
+# ---------- 券商式持仓页重构（2026-11-16）辅助函数 ----------
+# 铁律：颜色只承载「涨跌」一个语义。动作 / 状态 / 仓位 / 可信度一律用文字 + 形状承载，
+#       中性色只走既有的 .dim / .sub，⛔ 不引入新颜色、不新增 CSS 类名前缀。
+
+def _pt_lag_days(as_of):
+    """as_of 落后「最新交易日」几个交易日。交易日历 = 五组 simulated_nav_<组>.csv 的
+    date 并集（TRADING_DAYS，已在 :173 构建，每个日期都有净值，天然是交易日）。
+    ⛔ 取不到 / 非法日期 / 早于日历首日 → None（不写 0 蒙过去）；不落后 → 0。"""
+    if not isinstance(as_of, str) or not as_of.strip():
+        return None
+    _a = as_of.strip()[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", _a) or not TRADING_DAYS or ASOF_TODAY is None:
+        return None
+    try:
+        _y, _m, _dd = int(_a[:4]), int(_a[5:7]), int(_a[8:10])
+        if not (1 <= _m <= 12 and 1 <= _dd <= _pycal.monthrange(_y, _m)[1]):
+            return None
+    except ValueError:
+        return None
+    if _a < TRADING_DAYS[0]:
+        return None
+    return len([d for d in TRADING_DAYS if _a < d <= ASOF_TODAY]) if _a <= ASOF_TODAY else 0
+
+
+def _pt_num(v):
+    """锚位数值展示：float 用 :g 去浮点毛刺（18.792000001 → 18.792），str 原样，None/空 → None。"""
+    if v is None or v == "":
+        return None
+    if isinstance(v, bool):
+        return html.escape(str(v))
+    if isinstance(v, float):
+        return f"{v:g}"
+    return html.escape(str(v))
+
+
+def _pt_w_pct(cap):
+    """单席名义仓位 = 组合总资金的 1/cap。cap 一律取 meta.cap，⛔ 不硬编码 6 / 16.7。"""
+    try:
+        _c = float(cap)
+    except (TypeError, ValueError):
+        return None
+    if _c <= 0:
+        return None
+    return 100.0 / _c
+
+
+def _pt_weight_cell(cap):
+    """名义仓位列：在池 = 1/cap，中性色（⛔ 不用涨跌色）。"""
+    _w = _pt_w_pct(cap)
+    if _w is None:
+        return '<span class="dim">取不到</span>'
+    return f'<span class="dim">{_w:.1f}%</span>'
+
+
+def _pt_w_change(row, cap):
+    """仓位变动：由 state_from / state_to 推导为数字箭头（0%→16.7% 建仓 / 16.7%→16.7% 持有 /
+    16.7%→0% 调出）。中性色（⛔ 不用红绿，否则与「逐票收益」列撞色）。
+    状态取值不在已知集合 → 如实「未提供」，⛔ 不猜。"""
+    _w = _pt_w_pct(cap)
+    if _w is None:
+        return '<span class="dim">取不到</span>'
+    _f = "" if row.get("state_from") is None else str(row.get("state_from")).strip()
+    _t = "" if row.get("state_to") is None else str(row.get("state_to")).strip()
+    if _f == "在池":
+        _fw = _w
+    elif _f in ("0", "空席", ""):
+        _fw = 0.0
+    else:
+        _fw = None
+    if _t == "在池":
+        _tw = _w
+    elif _t == "调出":
+        _tw = 0.0
+    else:
+        _tw = None
+    if _fw is None or _tw is None:
+        return '<span class="dim">未提供</span>'
+    return f'<span class="dim">{_fw:.1f}% → {_tw:.1f}%</span>'
+
+
+def _pt_hold_days(days, code):
+    """持有 = days[] 里 rows 含该 code 的天数（建仓当日算 1，ETF 同算法）。
+    ⛔ 不用自然日、不用 (as_of − in_date).days。查不到 → None（如实「取不到」）。"""
+    if not code or not isinstance(days, list):
+        return None
+    _n = 0
+    for _dy in days:
+        if not isinstance(_dy, dict):
+            continue
+        for _x in (_dy.get("rows") or []):
+            if isinstance(_x, dict) and str(_x.get("code") or "") == str(code):
+                _n += 1
+                break
+    return _n or None
+
+
+def _pt_hold_cell(days, code):
+    _n = _pt_hold_days(days, code)
+    if _n is None:
+        return '<span class="dim">取不到</span>'
+    return f"{_n} 个交易日"
+
+
+def _pt_day_stats(days, cap):
+    """最近一日动作摘要：按当日快照 rows / exits 的 state_from → state_to 归类。
+    state 字段不可判时才回落 today_op 文字（⛔ 不猜、不把「继续在池」当建仓）。
+    无 days / rows 非 list → None（调用方写「取不到」）。"""
+    if not isinstance(days, list) or not days:
+        return None
+    _dy = days[-1]
+    if not isinstance(_dy, dict) or not isinstance(_dy.get("rows"), list):
+        return None
+    _new = _hold = _sell = 0
+    _codes = set()
+    for _x in _dy["rows"]:
+        if not isinstance(_x, dict):
+            continue
+        _c = str(_x.get("code") or "")
+        if _c:
+            _codes.add(_c)
+        _f = "" if _x.get("state_from") is None else str(_x.get("state_from")).strip()
+        _t = "" if _x.get("state_to") is None else str(_x.get("state_to")).strip()
+        if _t == "调出":
+            _sell += 1
+        elif _t == "在池" and _f == "在池":
+            _hold += 1
+        elif _t == "在池":
+            _new += 1
+        else:
+            _op = str(_x.get("today_op") or "")
+            if "调出" in _op or "卖出" in _op:
+                _sell += 1
+            elif "新进" in _op or "建仓" in _op:
+                _new += 1
+            elif _op:
+                _hold += 1
+    for _x in (_dy.get("exits") or []):
+        if isinstance(_x, dict) and str(_x.get("code") or "") not in _codes:
+            _sell += 1
+    _inpool = _new + _hold
+    return {"new": _new, "hold": _hold, "sell": _sell,
+            "empty": max(0, _cap_i(cap) - _inpool) if _cap_i(cap) is not None else None,
+            "date": _dy.get("date"), "inpool": _inpool}
+
+
+def _cap_i(cap):
+    try:
+        _c = int(cap)
+    except (TypeError, ValueError):
+        return None
+    return _c if _c > 0 else None
+
+
+def _pt_intent(as_of):
+    """意向区数据源：公共/数据/daily_report_WB_<as_of>.json 的 new_picks。
+    返回 (state, items, fname, gate)：
+      state = 'ok'（有票）/ 'empty'（new_picks 是空数组）/ 'missing'（文件不存在、
+              解析失败、或省略了 new_picks 键 —— 项目既有硬约定：省略键 ≠ 空数组）。
+    ⛔ 只读展示：不计算仓位金额、不折算手数、不计入席位、不参与收益平均、不改 current。"""
+    if not isinstance(as_of, str) or not re.match(r"^\d{4}-\d{2}-\d{2}$", as_of.strip()[:10]):
+        return ("missing", [], None, None)
+    _fn = f"daily_report_WB_{as_of.strip()[:10]}.json"
+    _p = os.path.join(DATA, _fn)
+    if not os.path.exists(_p):
+        return ("missing", [], _fn, None)
+    try:
+        with open(_p, encoding="utf-8-sig") as _f:
+            _j = json.load(_f)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return ("missing", [], _fn, None)
+    if not isinstance(_j, dict) or "new_picks" not in _j:
+        return ("missing", [], _fn, None)
+    _gate = None
+    if isinstance(_j.get("books"), dict):
+        _gate = _j["books"].get("new_picks")
+    _np = _j.get("new_picks")
+    if not isinstance(_np, list):
+        return ("missing", [], _fn, _gate)
+    if not _np:
+        return ("empty", [], _fn, _gate)
+    return ("ok", [_x for _x in _np if isinstance(_x, dict)], _fn, _gate)
+
+
 def portfolio_track_html():
     """track 页主位：券商式有限容量跟踪组合表。JSON 不可用时只回一行灰态。"""
     _d = _pt_load()
     # 缺陷B：track 页显式数据截至标签，数据源 = portfolio_track_WB.json 的 meta.as_of
     # （⛔ 不拿 BUILD_TS、不用价格源 k_asof 冒充「组合数据截至」）
+    # 区0 状态条：组合数据截至 + 落后几个交易日（实算）+ 纸面标识
+    # （⛔ 不拿 BUILD_TS、不用价格源 k_asof 冒充「组合数据截至」）
     _ao_raw = _d["meta"].get("as_of") if _d else None
+    _lag = _pt_lag_days(_ao_raw)
+    _ao_s = (_ao_raw.strip()[:10]
+             if isinstance(_ao_raw, str) and _ao_raw.strip() else None)
+    _lag_s = f"{_lag} 个交易日" if _lag is not None else "取不到"
+    _today_s = html.escape(ASOF_TODAY) if ASOF_TODAY else "取不到"
     _asof_badge = (
         '<div class="sub" style="margin:4px 0 8px">'
         '数据截至标签（跟踪组合数据源：portfolio_track_WB.json · meta.as_of）：'
-        f'<b>{asof_label(_ao_raw)}</b></div>')
+        f'<b>数据截至 {html.escape(_ao_s) if _ao_s else "取不到"}</b> ｜ '
+        f'<b>落后 {_lag_s}</b>'
+        f'（最新交易日 {_today_s}，取五组 simulated_nav_&lt;组&gt;.csv 交易日并集）'
+        ' ｜ <b>纸面组合</b></div>')
     if _d is None:
         return (_asof_badge +
                 '<div class="riskfoot" title="portfolio_track_WB.json 未产出 / 解析失败 / '
@@ -1898,6 +2097,25 @@ def portfolio_track_html():
     _cur = _d["current"]
     _exited = _d.get("exited") if isinstance(_d.get("exited"), list) else []
     _days = _d.get("days") if isinstance(_d.get("days"), list) else []
+
+    # 日期标签自适应（项目硬约定）：仅当 as_of == 最新交易日才允许叫「今日」；
+    # 落后 / 取不到 → 一律「最近一日（真实日期）」，⛔ 绝不把旧日期叫「今日」。
+    _is_today = (_lag == 0 and ASOF_TODAY is not None and _ao_s == ASOF_TODAY)
+    _op_label = "今日操作" if _is_today else "最近一日操作"
+    _day_word = "今日" if _is_today else "最近一日"
+
+    # 区1 最近一日动作摘要（一行）：从 days[-1].rows / exits 按 state_from→state_to 统计
+    _st = _pt_day_stats(_days, _cap)
+    if _st is None:
+        _sec1 = ('<div class="sub" style="margin:4px 0 8px">'
+                 '<b>最近一日动作</b>：取不到（days 快照未提供）</div>')
+    else:
+        _st_dt = _pt_esc(_st.get("date")) or "取不到"
+        _st_empty = (f'{_st["empty"]} 个' if _st.get("empty") is not None else "取不到")
+        _sec1 = ('<div class="sub" style="margin:4px 0 8px">'
+                 f'<b>{_day_word}（{_st_dt}）</b>：'
+                 f'建仓 <b>{_st["new"]}</b> 只 ｜ 持有 <b>{_st["hold"]}</b> 只 ｜ '
+                 f'卖出 <b>{_st["sell"]}</b> 只 ｜ 空席 <b>{_st_empty}</b></div>')
 
     # 固定 disclaimer（四句一字不少；价格源 / 容量取 meta，缺如实「取不到」）
     _disc = ('<div class="riskfoot">'
@@ -1918,38 +2136,58 @@ def portfolio_track_html():
     if len(_seats) < _cap:
         _seats += [None] * (_cap - len(_seats))
 
-    _head = ('<tr><th>证券名称 / 代码</th><th>纸面成本（纳入日 bfq 收盘）</th>'
-             f'<th>现价（bfq 收盘，截至 {_k_s}）</th><th>自纳入日起收益</th>'
-             '<th title="today_op">今日操作</th>'
-             '<th title="state_from → state_to（仅状态/席位迁移文字，不展示仓位百分比）">仓位变动</th>'
-             '<th>策略</th><th>方向</th>'
+    # 区2 席位主表：12 列固定（席位 / 名称代码 / 建仓日 / 纸面纳入价 / 纸面现价 /
+    # 逐票收益 / 今日·最近一日操作 / 名义仓位 / 仓位变动 / 持有 / 建仓逻辑 / 止损止盈锚）
+    _op_tip = f"{_op_label}（{_ao_s or '取不到'}，上游 today_op 字段）"
+    _head = ('<tr><th title="席位号（容量 cap 取 meta.cap）">席位</th>'
+             '<th>证券名称 / 代码</th><th>建仓日</th>'
+             '<th title="纳入当日 bfq 收盘价">纸面纳入价</th>'
+             f'<th title="bfq 收盘，截至 {_k_s}；中性色，非当日涨跌">纸面现价</th>'
+             '<th title="全表唯一使用涨红跌绿的列">逐票收益</th>'
+             f'<th title="{html.escape(_op_tip, quote=True)}">{_op_label}</th>'
+             '<th title="名义仓位 = 单席权重 1/cap（分母为组合总资金），中性色">名义仓位</th>'
+             '<th title="由 state_from → state_to 推导；中性色，非涨跌">仓位变动</th>'
+             '<th title="days 快照中含该票的交易日数（建仓当日算 1），非自然日">持有</th>'
              '<th title="上游主卡 basis 原文引用，保留原始措辞、未改写未过滤">建仓逻辑（上游原文引用）</th>'
-             '<th>止损 / 止盈锚</th></tr>')
+             '<th title="数值为 meta 内锚位；原始卡面值见每格 tooltip">止损 / 止盈锚</th></tr>')
     _trs = ""
-    for _r in _seats:
+    for _i, _r in enumerate(_seats, 1):
         if _r is None:                       # 空席：如实写「（空席）」，各列留空，不补造
-            _trs += ('<tr><td><span class="dim">（空席）</span></td>'
-                     + '<td class="dim">—</td>' * 9 + '</tr>')
+            _trs += (f'<tr><td><b>{_i}</b></td>'
+                     '<td><span class="dim">（空席）· 待建仓</span></td>'
+                     + '<td class="dim">—</td>' * 10 + '</tr>')
             continue
         _code = str(_r.get("code") or "")
         if _code == "（空席）" or str(_r.get("name") or "") == "（空席）":
             # JSON 自带的空席占位行（code/name=（空席）、其余字段 null）：如实写空席，不补造
-            _trs += ('<tr><td><span class="dim">（空席）</span></td>'
-                     + '<td class="dim">—</td>' * 9 + '</tr>')
+            _trs += (f'<tr><td><b>{_i}</b></td>'
+                     '<td><span class="dim">（空席）· 待建仓</span></td>'
+                     + '<td class="dim">—</td>' * 10 + '</tr>')
             continue
         _is_etf = bool(_etf) and _code == _etf
+        _seat_raw = _r.get("seat")
+        _seat_no = (html.escape(str(_seat_raw)) if _seat_raw not in (None, "") else str(_i))
+        # 名称单元格：代码 + 名称（+ ETF 固定腿标签）+ 来源组/共识/方向小字（不新增列）
         _name_cell = (f'<b>{html.escape(_code)}</b> {html.escape(str(_r.get("name") or ""))}'
-                      + (' <span class="tag">固定腿 · 非共识非推荐</span>' if _is_etf else ''))
+                      + (' <span class="tag">固定腿 · 非共识非推荐</span>' if _is_etf else '')
+                      + f'<div class="sub">{_pt_strategy(_r)} ｜ 方向 {_pt_industry(_r)}</div>')
         _pc = _pt_esc(_r.get("paper_cost"))
         _lc = _pt_esc(_r.get("last_close"))
         _op = _pt_esc(_r.get("today_op"))
+        _id = _pt_esc(_r.get("in_date"))
         _pc_s = _pc if _pc else '<span class="dim">取不到</span>'
         _lc_s = _lc if _lc else '<span class="dim">取不到</span>'
         _op_s = _op if _op else '<span class="dim">未提供</span>'
-        _trs += (f'<tr><td>{_name_cell}</td><td>{_pc_s}</td><td>{_lc_s}</td>'
-                 f'<td>{_pt_ret(_r.get("ret_since_in"))}</td><td>{_op_s}</td>'
-                 f'<td>{_pt_state(_r)}</td><td>{_pt_strategy(_r)}</td>'
-                 f'<td>{_pt_industry(_r)}</td><td>{_pt_basis(_r, _is_etf)}</td>'
+        _id_s = _id if _id else '<span class="dim">取不到</span>'
+        _trs += (f'<tr><td><b>{_seat_no}</b></td><td>{_name_cell}</td><td>{_id_s}</td>'
+                 f'<td>{_pc_s}</td>'
+                 f'<td class="dim">{_lc_s}</td>'
+                 f'<td>{_pt_ret(_r.get("ret_since_in"))}</td>'
+                 f'<td>{_op_s}</td>'
+                 f'<td>{_pt_weight_cell(_cap)}</td>'
+                 f'<td>{_pt_w_change(_r, _cap)}</td>'
+                 f'<td>{_pt_hold_cell(_days, _code)}</td>'
+                 f'<td>{_pt_basis(_r, _is_etf)}</td>'
                  f'<td>{_pt_anchor(_r)}</td></tr>')
 
     _over_note = (f'<div class="sub">⚠️ current 行数（{len(_cur)}）超过容量 {_cap}，'
@@ -1970,8 +2208,11 @@ def portfolio_track_html():
 
     # 已调出小表（lead 2026-11-08 裁定③）：固定 7 列；只显示「存续期收益」，
     # ⛔ 不显示 last_close / ret_since_in（后者统一截至 k_asof，票已调出还并排显示会误导）。
+    # 区3 已调出（不置灰、不删行）：8 列；只显示「存续期收益」，
+    # ⛔ 不显示 last_close / ret_since_in（后者统一截至 k_asof，票已调出还并排显示会误导）。
+    # ⛔ 已调出行不计入区2 的席位数与仓位统计。
     if not _exited:
-        _ex_html = '<div class="sub">暂无调出记录</div>'
+        _ex_html = '<div class="sub">暂未调出任何标的</div>'
     else:
         _ex_tr = ""
         for _e in _exited:
@@ -1980,28 +2221,78 @@ def portfolio_track_html():
             _ec = _pt_esc(_e.get("code")) or '<span class="dim">取不到</span>'
             _en = _pt_esc(_e.get("name")) or '<span class="dim">未提供</span>'
             _seat = _e.get("seat")
-            _seat_s = (f' <span class="dim">席位 {html.escape(str(_seat))}</span>'
-                       if _seat not in (None, "") else '')
+            _seat_s = (html.escape(str(_seat)) if _seat not in (None, "")
+                       else '<span class="dim">—</span>')
             _id = _pt_esc(_e.get("in_date")) or '<span class="dim">取不到</span>'
             _ed = _pt_esc(_e.get("exit_date")) or '<span class="dim">取不到</span>'
             _rs = _pt_esc(_e.get("exit_reason")) or '<span class="dim">未提供</span>'
             # ⛔ 不回落 ret_since_in：口径不同（统一截至 k_asof），缺「存续期收益」如实「取不到」
             _dur = _e.get("存续期收益")
             _bv = _e.get("basis")
-            _bs = (html.escape(clip_note(str(_bv), 60)) if _bv not in (None, "")
-                   else '<span class="dim">未提供</span>')
-            _ex_tr += (f'<tr><td>{_ec}{_seat_s}</td><td>{_en}</td><td>{_id}</td><td>{_ed}</td>'
-                       f'<td>{_rs}</td><td>{_pt_ret(_dur)}</td><td>{_bs}</td></tr>')
-        _ex_html = ('<table><tr><th>代码</th><th>名称</th><th>纳入日</th><th>调出日</th>'
-                    '<th>原因</th><th>存续期收益</th>'
-                    '<th title="上游主卡 basis 原文引用">建仓逻辑（上游原文引用）</th></tr>'
+            _bs = (html.escape(clip_note(str(_bv), 60)) if _bv not in (None, "") else "")
+            _rs_cell = _rs + (f'<div class="sub">建仓逻辑：{_bs}</div>' if _bs else '')
+            _ex_tr += (f'<tr><td><b>{_seat_s}</b></td>'
+                       f'<td><b>{_ec}</b> {_en}</td><td>{_id}</td><td>{_ed}</td>'
+                       f'<td>{_pt_hold_cell(_days, _e.get("code"))}</td>'
+                       f'<td>{_pt_ret(_dur)}</td><td>{_rs_cell}</td>'
+                       f'<td>{_pt_anchor(_e)}</td></tr>')
+        _ex_html = ('<table><tr><th>席位</th><th>证券名称 / 代码</th><th>建仓日</th>'
+                    '<th>调出日</th>'
+                    '<th title="按 days 快照中含该票的交易日数计（与区2「持有」同算法），非自然日">存续天数</th>'
+                    '<th>存续期收益</th><th>调出原因</th>'
+                    '<th title="数值为锚位；原始卡面值见 tooltip">止损 / 止盈锚</th></tr>'
                     f'{_ex_tr}</table>')
     _ex_sec = ('<div class="sub" style="margin-top:14px"><b>已调出</b>'
-               '（同容量约束下走一个才补一个的历史席位；收益一律为调出当日口径的「存续期收益」）</div>'
+               '（同容量约束下走一个才补一个的历史席位；收益一律为调出当日口径的「存续期收益」；'
+               '本区不计入上方席位数与仓位统计）</div>'
                + _ex_html
                + '<div class="sub" style="margin-top:6px">'
                  '同一代码可能出现多条调出记录：若某票调出后再次出现在当日推荐卡，'
                  '按新的一次纳入处理（新纳入日、新纸面成本）。</div>')
+
+    # 区4 意向区「若今日新买会买」：与主表物理隔离（虚线边框容器 + 独立小标题）。
+    # ⛔ 不计算仓位金额、不折算手数、不计入席位、不参与收益平均、不改变 current。
+    _ist, _irows, _ifn, _igate = _pt_intent(_ao_s)
+    _i_src = ('来源：公共/数据/'
+              + (html.escape(_ifn) if _ifn else 'daily_report_WB_&lt;as_of&gt;.json')
+              + '（new_picks 字段'
+              + (f' · books.new_picks = {html.escape(str(_igate))}' if _igate else '')
+              + '）')
+    _intent_foot = ('<div class="sub" style="margin-top:6px">'
+                    '意向区价格口径为 hfq，与主表纸面纳入价（bfq）不同标度，不可直接比较，'
+                    '故不作金额折算。本区不计入席位数、不参与任何收益平均、不改变 current。</div>')
+    if _ist == "missing":
+        # 文件不存在 / 解析失败 / 省略了 new_picks 键 —— 与「空数组」严格区分
+        _i_body = '<div class="sub" style="margin-top:6px">取不到（未提供）</div>'
+    elif _ist == "empty":
+        _i_body = '<div class="sub" style="margin-top:6px">当日无新买意向</div>'
+    else:
+        _itr = ""
+        for _x in _irows:
+            _ic = _pt_esc(_x.get("code")) or '<span class="dim">取不到</span>'
+            _inm = _pt_esc(_x.get("name")) or '<span class="dim">未提供</span>'
+            _iind = _pt_esc(_x.get("industry")) or '<span class="dim">行业未提供</span>'
+            _isig = _pt_num(_x.get("sig_score"))
+            _irsn = _x.get("reason")
+            _irs = (html.escape(clip_note(str(_irsn), 60)) if _irsn not in (None, "")
+                    else '<span class="dim">未提供</span>')
+            _itp, _isl = _pt_num(_x.get("take_profit")), _pt_num(_x.get("stop_loss"))
+            _ianc = (f'止盈 {_itp or "未提供"} / 止损 {_isl or "未提供"}')
+            _isig_s = _isig if _isig else '<span class="dim">未提供</span>'
+            _itr += (f'<tr><td><b>{_ic}</b></td><td>{_inm}</td><td>{_iind}</td>'
+                     f'<td>{_isig_s}</td>'
+                     f'<td>{_irs}</td><td>{_ianc}</td></tr>')
+        _i_body = ('<table><tr><th>代码</th><th>名称</th><th>行业</th>'
+                   '<th title="上游 sig_score 原值；总腿数未提供，不折算比例">信号腿数</th>'
+                   '<th title="上游 reason 原文，clip_note 截 60 字">理由（上游原文）</th>'
+                   '<th title="卡面原始价（hfq 口径），不可与主表纸面纳入价比较">卡面止盈 / 止损</th></tr>'
+                   f'{_itr}</table>')
+    _sec4 = ('<div style="border:1px dashed var(--line);border-radius:8px;'
+             'padding:10px 14px;margin-top:14px">'
+             f'<div class="sub"><b>若{_day_word}新买会买（意向区 · 非持仓 · 不占席位）</b></div>'
+             + _i_body
+             + f'<div class="sub" style="margin-top:6px">{_i_src}</div>'
+             + _intent_foot + '</div>')
 
     # 逐日席位变化（lead 2026-11-08 裁定④）：只展示席位构成与进出事件
     # （code / today_op / state_from → state_to），⛔ 不展示任何收益列——
@@ -2031,12 +2322,14 @@ def portfolio_track_html():
                       '收益列未展示（统一截至口径，非当日）：各日快照的现价与收益字段统一截至 '
                       f'{_k_s}、并非该日收盘，故不做成逐日战绩或历史净值曲线，'
                       '此处仅列席位构成与进出事件。主表一律以 current 为准。</div>'
-                      '<table><tr><th>日期</th><th>代码</th><th>今日操作</th>'
+                      f'<table><tr><th>日期</th><th>代码</th><th>{_op_label}</th>'
                       '<th>状态迁移</th><th>事件</th></tr>'
                       f'{_dtr}</table></details>')
 
-    return (_asof_badge + _disc + _meta_line + '<table>' + _head + _trs + '</table>'
-            + _over_note + _foot + _ex_sec + _days_html)
+    # 区0 状态条 → 区1 动作摘要 → 区2 席位主表 → 区3 已调出 → 区4 意向区 → 区5 逐日备查
+    return (_asof_badge + _meta_line + _sec1 + _disc
+            + '<table>' + _head + _trs + '</table>'
+            + _over_note + _foot + _ex_sec + _sec4 + _days_html)
 
 body = f"""
 <h1>推荐跟踪</h1>
