@@ -1864,16 +1864,21 @@ def _pt_strategy(row):
     return '<span class="dim">未提供</span>'
 
 
-def _ops_style(row):
-    """打法摘要：basis 首段（；/，分隔）去掉尾部括注后截短展示。
-    仅派生展示、原文引用不改写；basis 缺失如实「取不到」，不编造。"""
+def _ops_style(row, strat_map=None):
+    """策略列打法摘要：优先 join 当日上报件 strategy.summary（截 12 字）；
+    取不到退回 basis 首段派生并标「兜底」。原文引用不改写，不编造。"""
+    _g = str(row.get("group") or "")
+    _s = (strat_map or {}).get(_g)
+    if _s:
+        return (f'<div class="sub" title="打法来源：{_g} 当日上报件 strategy.summary（原文引用）：'
+                f'{html.escape(_s, quote=True)}">打法：{html.escape(clip_note(_s, 12))}</div>')
     _b = row.get("basis")
     if _b in (None, "", "未提供"):
-        return '<div class="sub dim" title="basis 未提供，打法摘要取不到">打法：取不到（basis 未提供）</div>'
+        return '<div class="sub dim" title="上报件 strategy.summary 取不到且 basis 未提供">打法：取不到（无来源）</div>'
     _first = re.split(r"[；,，]", str(_b))[0].strip()
     _first = re.sub(r"（[^）]*）$", "", _first).strip() or _first
-    return (f'<div class="sub" title="打法摘要由 basis 首段派生（原文引用不改写）：'
-            f'{html.escape(str(_b), quote=True)}">打法：{html.escape(clip_note(_first, 20))}</div>')
+    return (f'<div class="sub" title="兜底口径：上报件 strategy.summary 取不到，由 basis 首段派生（原文引用）：'
+            f'{html.escape(str(_b), quote=True)}">打法（兜底）：{html.escape(clip_note(_first, 20))}</div>')
 
 
 def _pt_basis(row, is_etf):
@@ -2530,6 +2535,23 @@ def ops_html():
     _etf = str(_m.get("etf_code") or "")
     _chg_map = _ops_pct_chg(_ao)   # 今日涨跌：增量件 pct_chg（4/6 覆盖）
 
+    # CX 复验函 C：策略列打法摘要数据源——优先 join 当日上报件 strategy.summary（WB 件缺 → 兜底 basis 派生）
+    _strat_map = {}
+    for _g in GROUPS:
+        _sp = os.path.join(DATA, f"daily_report_{_g}_{_ao}.json") if _ao else None
+        _sv = None
+        if _sp and os.path.exists(_sp):
+            try:
+                _sd = json.load(open(_sp, encoding="utf-8"))
+                _sj = _sd.get("strategy")
+                if isinstance(_sj, dict):
+                    _v = _sj.get("summary")
+                    if isinstance(_v, str) and _v.strip():
+                        _sv = _v.strip()
+            except (OSError, ValueError):
+                pass
+        _strat_map[_g] = _sv
+
     # ⑧ 日期导航（顶部）：默认最新交易日；非最新日无卡如实标，不伪造
     def _day_link(_dt, _lab):
         if _dt and _dt in CARD_DATES:
@@ -2570,6 +2592,18 @@ def ops_html():
             _lot_fail.append((str(_r.get("code") or ""), _lot))
     _exec_n = max(0, (_cap_n or len(_cur)) - len(_lot_fail))
     _exec_pct = (_exec_n / _cap_n * 100) if _cap_n else None
+    # CX 复验六：距回撤红线实算（_CAL_DD 日收益链乘；口径与日历组合浮动一致）
+    if _CAL_DD["n_days"]:
+        _hit6 = "触及" if _CAL_DD["dd_min"] <= -6 else "未触及"
+        _hit8 = "触及" if _CAL_DD["dd_min"] <= -8 else "未触及"
+        _hit10 = "触及" if _CAL_DD["dd_min"] <= -10 else "未触及"
+        _dd_line = (f'<div class="sub">距 −6% / −8% / −10% 回撤观察线：'
+                    f'<b>最低回撤 {_CAL_DD["dd_min"]*100:+.2f}%</b>（组合净值 {_CAL_DD["nav"]:.4f} / 峰值 {_CAL_DD["peak"]:.4f}，'
+                    f'{_CAL_DD["n_days"]} 日链乘、断点 {_CAL_DD["n_skip"]} 处：无样本日不插值；ETF 席按 0 计）'
+                    f'：−6% {_hit6} ｜ −8% {_hit8} ｜ −10% {_hit10}；只报是否触及，不做红黄橙评价</div>')
+    else:
+        _dd_line = ('<div class="sub">距 −6% / −8% / −10% 回撤观察线：'
+                    f'{_ops_na("取不到（无可用日收益序列）", "组合当日浮动全为取不到")}</div>')
     _gap = (
         '<div class="sub">仓位%：名义 <b>100%（' + str(_cap_n if _cap_n is not None else "?")
         + '/' + str(_cap_n if _cap_n is not None else "?") + '）</b> ｜ 整手约束下可执行 <b>'
@@ -2581,8 +2615,7 @@ def ops_html():
         + '</b>（ETF 计 0）/ <b>' + (f'{_cum_ex:+.2f}%' if _cum_ex is not None else "取不到")
         + '</b>（剔 ETF）</div>'
         '<div class="sub">风控口径：<b>纸面回放 · 止损 −10% · 硬红线 −20%，尚未接入实盘</b></div>'
-        '<div class="sub">距 −6% / −8% / −10% 回撤观察线：'
-        f'<b>{_ops_na("取不到（纸面不提供组合净值）", "纸面暂无组合净值序列，暂无法计算")}</b></div>')
+        + _dd_line)
     _status = (
         '<div class="card" style="margin-bottom:10px">'
         '<div class="sub" style="margin:0 0 6px"><b>状态条</b></div>'
@@ -2702,7 +2735,7 @@ def ops_html():
              '<th title="按现价与止损参考价计算；无参考价显示 —">距止损</th>'
              '<th title="按止盈参考价与现价计算；无参考价显示 —">距止盈</th>'
              '<th title="自建仓以来的交易日数（建仓当日算 1）">持有天数</th>'
-             '<th title="来源组 · 共识票数；下方小字为打法摘要（basis 首段派生、原文引用）">策略</th>'
+             '<th title="来源组 · 共识票数；下方小字为打法摘要（优先当日上报件 strategy.summary 截 12 字，取不到由 basis 派生标「兜底」）">策略</th>'
              '<th title="所属行业">方向</th>'
              '<th title="建仓理由原文（悬停看全文）">建仓逻辑</th></tr>')
     _trs = ""
@@ -2776,7 +2809,7 @@ def ops_html():
                  f'<td>{_ops_dist(_lc, _r.get("stop_loss_anchor"), "sl")}</td>'
                  f'<td>{_ops_dist(_lc, _r.get("take_profit_anchor"), "tp")}</td>'
                  f'<td>{_pt_hold_cell(_days, _c)}</td>'
-                 f'<td>{_pt_strategy(_r)}{_ops_style(_r)}</td>'
+                 f'<td>{_pt_strategy(_r)}{_ops_style(_r, _strat_map)}</td>'
                  f'<td>{_pt_industry(_r)}</td>'
                  + _ops_quote_cell(None if _is_etf else _r.get("basis"),
                                    "不适用（固定腿）" if _is_etf else "未提供")
@@ -2988,6 +3021,59 @@ def ops_html():
             + _pool + _ex_sec + _archive + "".join(_combo) + _rn_card)
 
 
+# ---- 共用数据准备（CX 复验六 + 遗留2：ops 状态条回撤线与日历「组合当日浮动」共用；
+#      ⛔ 必须在下方 ops_html() 调用之前定义，否则函数内引用 _CAL_DD 会 NameError） ----
+_OPD = _pt_load()
+_OPD_DAYS = _OPD.get("days") if _OPD and isinstance(_OPD.get("days"), list) else []
+
+# CX 验收遗留2：日历「组合当日浮动」——与作战台同一派生口径（WB 2026-11-17 已复算 11-16 = +0.32%（4/6））
+# 分子：当日快照 rows 中「建仓日早于当日 且 非 ETF(510300) 且 增量件 pct_chg 有值」的个股涨跌幅之和（百分数单位原样累加）
+# 分母：固定 6 席（meta.cap=6）；ETF 与当日新进票计 0；覆盖率<50% 的日子不硬算（A 补①护栏）
+# ⛔ 量纲陷阱：pct_chg 是百分数单位（1.86 = +1.86%），和 ÷6 后直接 %.2f%% 显示，绝不能再 ×100（×100 会错成 +32.28%）
+_CAL_CAP = 6
+_CAL_FLOAT = {}
+for _dy in _OPD_DAYS:
+    _ds = str(_dy.get("date") or "")
+    _chg_d = _ops_pct_chg(_ds)
+    _num = 0.0
+    _cov = 0
+    for _x in (_dy.get("rows") or []):
+        if not isinstance(_x, dict):
+            continue
+        _c = str(_x.get("code") or "")
+        if not _c or _c == "510300":
+            continue
+        if str(_x.get("in_date") or "") == _ds:
+            continue
+        if _c in _chg_d:
+            _num += _chg_d[_c]
+            _cov += 1
+    _CAL_FLOAT[_ds] = {"pct": (_num / _CAL_CAP) if (_cov and _cov * 2 >= _CAL_CAP) else None, "cov": _cov}
+
+# CX 复验六：距回撤红线实算——日历「组合 x.xx%（n/6）」即日收益序列，直接链乘。
+# 口径：等权 6 席、ETF 席按 0 计；覆盖率<50% 的日跳过不插值、计断点；
+# 只报是否触及 −6%/−8%/−10%，不做红黄橙评价（CX 三条注意全采纳）。
+_CAL_NAV = {}
+_cal_nav = 1.0
+_cal_peak = 1.0
+_cal_ddmin = 0.0
+_cal_n = 0
+_cal_skip = 0
+for _dy in _OPD_DAYS:
+    _ds = str(_dy.get("date") or "")
+    _fv = _CAL_FLOAT.get(_ds)
+    if _fv is None or _fv["pct"] is None:
+        _cal_skip += 1
+        continue
+    _cal_nav *= (1 + _fv["pct"] / 100.0)
+    _cal_peak = max(_cal_peak, _cal_nav)
+    _cal_ddmin = min(_cal_ddmin, _cal_nav / _cal_peak - 1)
+    _CAL_NAV[_ds] = _cal_nav
+    _cal_n += 1
+_CAL_DD = {"nav": _cal_nav, "peak": _cal_peak, "dd_min": _cal_ddmin,
+           "n_days": _cal_n, "n_skip": _cal_skip}
+
+
 _ops_body = f"""
 <h1>实盘作战台</h1>
 <div class="sub">5 组合跟踪 · 五组重点池 ｜ 纸面推演 · 非真实持仓 · 意向非成交（详见页底口径说明）</div>
@@ -3000,8 +3086,7 @@ open(f"{OUT}/ops/index.html", "w").write(page("实盘作战台", _ops_body, dept
 os.makedirs(f"{OUT}/calendar", exist_ok=True)
 
 # ---- CX P0 升级：组合当日盈亏取不到 / 五组小色块中性灰 / 当日动作数(days 派生) / replay_note ----
-_OPD = _pt_load()
-_OPD_DAYS = _OPD.get("days") if _OPD and isinstance(_OPD.get("days"), list) else []
+# （_OPD/_OPD_DAYS 已在上方「共用数据准备」段定义——ops 状态条回撤线与日历共用同一份，勿重复读盘）
 _CAL_ACT = {}
 for _dy in _OPD_DAYS:
     if not isinstance(_dy, dict):
@@ -3049,29 +3134,8 @@ for _i in range(1, len(_rs)):
 if _rs:
     _HRS_REF_LAST = _rs[-1][0]
 
-# CX 验收遗留2：日历「组合当日浮动」——与作战台同一派生口径（WB 2026-11-17 已复算 11-16 = +0.32%（4/6））
-# 分子：当日快照 rows 中「建仓日早于当日 且 非 ETF(510300) 且 增量件 pct_chg 有值」的个股涨跌幅之和（百分数单位原样累加）
-# 分母：固定 6 席（meta.cap=6）；ETF 与当日新进票计 0
-# ⛔ 量纲陷阱：pct_chg 是百分数单位（1.86 = +1.86%），和 ÷6 后直接 %.2f%% 显示，绝不能再 ×100（×100 会错成 +32.28%）
-_CAL_CAP = 6
-_CAL_FLOAT = {}
-for _dy in _OPD_DAYS:
-    _ds = str(_dy.get("date") or "")
-    _chg_d = _ops_pct_chg(_ds)
-    _num = 0.0
-    _cov = 0
-    for _x in (_dy.get("rows") or []):
-        if not isinstance(_x, dict):
-            continue
-        _c = str(_x.get("code") or "")
-        if not _c or _c == "510300":
-            continue
-        if str(_x.get("in_date") or "") == _ds:
-            continue
-        if _c in _chg_d:
-            _num += _chg_d[_c]
-            _cov += 1
-    _CAL_FLOAT[_ds] = {"pct": (_num / _CAL_CAP) if _cov else None, "cov": _cov}
+# （CX 验收遗留2 的 _CAL_CAP/_CAL_FLOAT 与 CX 复验六的 _CAL_DD 已上移至「共用数据准备」段——
+#   ops 状态条在 ops_html() 调用期就要用 _CAL_DD，日历格共用 _CAL_FLOAT，勿在此重复构建。）
 
 def _cal_median(xs):
     s = sorted(xs); n = len(s)
@@ -3185,7 +3249,7 @@ def _cal_month_html(y, m, build_day):
                 if _fl is not None and _fl["pct"] is not None:
                     _flt_tip = (f'组合当日浮动（与作战台同一派生口径）：当日持仓（建仓日早于当日）中 '
                                 f'kline_incr_HRS_{ds}.csv 有官方涨跌幅的个股涨跌幅等权和 ÷ {_CAL_CAP} 席；'
-                                f'ETF 与当日新进票计 0；覆盖 {_fl["cov"]}/{_CAL_CAP}。')
+                                f'ETF 与当日新进票计 0；覆盖 {_fl["cov"]}/{_CAL_CAP}；覆盖率<50% 不硬算。')
                     inner += (f'<div class="dim calnote" title="{html.escape(_flt_tip, quote=True)}">'
                               f'组合 {_fl["pct"]:+.2f}%（{_fl["cov"]}/{_CAL_CAP}）</div>')
                 else:
