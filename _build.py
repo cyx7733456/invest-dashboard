@@ -2575,15 +2575,13 @@ def ops_html():
              + '（默认最新交易日；无卡如实标注）</div></div>')
 
     # ① 状态条：真实信息精简行常显；口径/可执行性说明收进默认收起的 details
-    _cov_codes = [c for c in ("sh603855", "sz300406", "sz002351", "sh603312") if c in _chg_map]
-    _cov_n = len(_cov_codes)
-    _float_sum = sum(_chg_map[c] for c in _cov_codes)
-    _float_d = _cap_n if _cap_n else 6
-    _float_pct = _float_sum / _float_d if _float_d else None
+    # CX 第二封回函 B′：当日浮动改引共用段 _CAL_FLOAT 最新日（与日历同口径，消除两套算法）
+    _fl_now = _CAL_FLOAT.get(ASOF_TODAY or "")
+    _float_pct = _fl_now["pct"] if _fl_now else None
+    _cov_n = _fl_now["cov"] if _fl_now else 0
     _cum_vals = [float(r["ret_since_in"]) for r in _cur
                  if isinstance(r.get("ret_since_in"), (int, float)) and not isinstance(r.get("ret_since_in"), bool)]
     _cum_all = (sum(_cum_vals) / _cap_n * 100) if (_cap_n and _cum_vals) else None
-    _cum_ex = (sum(_cum_vals) / len(_cum_vals) * 100) if _cum_vals else None
     _lot_fail = []
     for _r in _cur:
         _p = _r.get("last_close") if _r.get("last_close") not in (None, "") else _r.get("paper_cost")
@@ -2599,7 +2597,7 @@ def ops_html():
         _hit10 = "触及" if _CAL_DD["dd_min"] <= -10 else "未触及"
         _dd_line = (f'<div class="sub">距 −6% / −8% / −10% 回撤观察线：'
                     f'<b>最低回撤 {_CAL_DD["dd_min"]*100:+.2f}%</b>（组合净值 {_CAL_DD["nav"]:.4f} / 峰值 {_CAL_DD["peak"]:.4f}，'
-                    f'{_CAL_DD["n_days"]} 日链乘、断点 {_CAL_DD["n_skip"]} 处：无样本日不插值；ETF 席按 0 计）'
+                    f'{_CAL_DD["n_days"]} 日链乘、断点 {_CAL_DD["n_skip"]} 处：无样本日不插值；ETF 席按前复权收益计入，无 bar 日计 0）'
                     f'：−6% {_hit6} ｜ −8% {_hit8} ｜ −10% {_hit10}；只报是否触及，不做红黄橙评价</div>')
     else:
         _dd_line = ('<div class="sub">距 −6% / −8% / −10% 回撤观察线：'
@@ -2609,12 +2607,19 @@ def ops_html():
         + '/' + str(_cap_n if _cap_n is not None else "?") + '）</b> ｜ 整手约束下可执行 <b>'
         + (f'{_exec_pct:.1f}%（{_exec_n}/{_cap_n}）' if _exec_pct is not None else "取不到") + '</b>'
         + ('（美的 9,268 &gt; 6,000 硬上限）' if _lot_fail else '') + '</div>'
-        '<div class="sub">当日浮动%：<b>' + (f'{_float_pct:+.2f}%' if _float_pct is not None else "取不到") + '</b>'
-        + f'（{_cov_n}/{_cap_n or 6} 覆盖；官方行情四只等权和 ÷ 6 席，ETF 与美的新进计 0）</div>'
-        '<div class="sub">累计收益：<b>' + (f'{_cum_all:+.2f}%' if _cum_all is not None else "取不到")
-        + '</b>（ETF 计 0）/ <b>' + (f'{_cum_ex:+.2f}%' if _cum_ex is not None else "取不到")
-        + '</b>（剔 ETF）</div>'
-        '<div class="sub">风控口径：<b>纸面回放 · 止损 −10% · 硬红线 −20%，尚未接入实盘</b></div>'
+        '<div class="sub" title="分子：当日快照中建仓日早于当日且官方 pct_chg 有值的个股涨跌幅之和'
+        '（百分数单位原样累加），另加 ETF(510300) 前复权收益（有 bar 才计入）；'
+        '分母固定 6 席；当日新进票与无行情的席计 0 且不计入覆盖数；'
+        '覆盖率&lt;50%（即不足 3/6）不硬算、显示「取不到」">当日浮动%：<b>'
+        + (f'{_float_pct:+.2f}%' if _float_pct is not None else "取不到") + '</b>'
+        + f'（{_cov_n}/{_cap_n or 6} 覆盖；覆盖票等权和 ÷ 6 席，当日新进计 0）</div>'
+        '<div class="sub" title="当前 6 席 ret_since_in 等权平均；不含已调出票的已实现损益，'
+        '组合整体口径见下一行">持仓浮盈：<b>'
+        + (f'{_cum_all:+.2f}%' if _cum_all is not None else "取不到") + '</b>（当前 6 席等权，不含已实现）</div>'
+        '<div class="sub" title="组合日收益（个股增量件 pct_chg + ETF 前复权，等权 6 席）逐日链乘 1+p；'
+        '已实现损益经已调出票持仓期的日收益沉淀在链乘序列中">组合累计（含已实现，链乘）：<b>'
+        + (f'{(_CAL_DD["nav"]-1)*100:+.2f}%' if _CAL_DD["n_days"] else "取不到") + '</b></div>'
+        '<div class="sub">风控口径：<b>纸面回放 · 止损 −10% · 硬红线 −20%，尚未接入实盘</b>；组合累计以链乘口径为准</div>'
         + _dd_line)
     _status = (
         '<div class="card" style="margin-bottom:10px">'
@@ -3021,15 +3026,38 @@ def ops_html():
             + _pool + _ex_sec + _archive + "".join(_combo) + _rn_card)
 
 
-# ---- 共用数据准备（CX 复验六 + 遗留2：ops 状态条回撤线与日历「组合当日浮动」共用；
+# ---- 共用数据准备（CX 复验六 + 第二封回函 B′：ops 状态条与日历「组合当日浮动」共用；
 #      ⛔ 必须在下方 ops_html() 调用之前定义，否则函数内引用 _CAL_DD 会 NameError） ----
 _OPD = _pt_load()
 _OPD_DAYS = _OPD.get("days") if _OPD and isinstance(_OPD.get("days"), list) else []
 
-# CX 验收遗留2：日历「组合当日浮动」——与作战台同一派生口径（WB 2026-11-17 已复算 11-16 = +0.32%（4/6））
-# 分子：当日快照 rows 中「建仓日早于当日 且 非 ETF(510300) 且 增量件 pct_chg 有值」的个股涨跌幅之和（百分数单位原样累加）
-# 分母：固定 6 席（meta.cap=6）；ETF 与当日新进票计 0；覆盖率<50% 的日子不硬算（A 补①护栏）
-# ⛔ 量纲陷阱：pct_chg 是百分数单位（1.86 = +1.86%），和 ÷6 后直接 %.2f%% 显示，绝不能再 ×100（×100 会错成 +32.28%）
+# CX 第二封回函 B′：ETF(510300) 前复权逐日收益%。源 kline_etf_510300_WB.csv
+# （⛔ 实测为 | 竖线分隔、UTF-8，含 date / close_qfq_add 前复权收盘列——与施工单「逗号」描述不符，以实测为准），
+# 按 date 升序差分 ×100 —— 与个股 pct_chg 同量纲（百分数）。
+# 首日无前收不入表；窗口内 div_cum_after 恒 0 无需除权调整；文件不存在/解析失败如实空表，不伪造。
+_ETF_PCT = {}
+try:
+    with open(f"{DATA}/kline_etf_510300_WB.csv", newline="", encoding="utf-8") as _ef:
+        _erd = csv.DictReader(_ef, delimiter="|")
+        _e_prev = None
+        for _er in _erd:
+            _ed = str(_er.get("date") or "")
+            try:
+                _ec = float(_er.get("close_qfq_add"))
+            except (TypeError, ValueError):
+                continue
+            if _e_prev is not None and _e_prev != 0:
+                _ETF_PCT[_ed] = (_ec / _e_prev - 1) * 100.0
+            _e_prev = _ec
+except (OSError, UnicodeDecodeError):
+    _ETF_PCT = {}
+
+# CX 第二封回函 B′：日历/状态条「组合当日浮动」统一口径——
+# 分子：当日快照 rows 中「code≠510300 且建仓日早于当日 且 增量件 pct_chg 有值」的个股涨跌幅之和
+#      （动态派生全部覆盖票，不写死代码）＋ ETF 前复权收益（_ETF_PCT 有值才计入并计覆盖；
+#      无 bar/无前收日 → 计 0、不计覆盖）；全部百分数单位原样累加
+# 分母：固定 6 席（meta.cap=6）；覆盖率<50% 的日子不硬算（护栏）
+# ⛔ 量纲陷阱：和 ÷6 后直接 %.2f%% 显示，绝不能再 ×100（×100 会错成 +32.28%）
 _CAL_CAP = 6
 _CAL_FLOAT = {}
 for _dy in _OPD_DAYS:
@@ -3048,11 +3076,15 @@ for _dy in _OPD_DAYS:
         if _c in _chg_d:
             _num += _chg_d[_c]
             _cov += 1
+    _etf_v = _ETF_PCT.get(_ds)
+    if _etf_v is not None:
+        _num += _etf_v
+        _cov += 1
     _CAL_FLOAT[_ds] = {"pct": (_num / _CAL_CAP) if (_cov and _cov * 2 >= _CAL_CAP) else None, "cov": _cov}
 
 # CX 复验六：距回撤红线实算——日历「组合 x.xx%（n/6）」即日收益序列，直接链乘。
-# 口径：等权 6 席、ETF 席按 0 计；覆盖率<50% 的日跳过不插值、计断点；
-# 只报是否触及 −6%/−8%/−10%，不做红黄橙评价（CX 三条注意全采纳）。
+# 口径（B′）：等权 6 席；个股按增量件 pct_chg、ETF 席按前复权收益计入，无 bar 日计 0；
+# 覆盖率<50% 的日跳过不插值、计断点；只报是否触及 −6%/−8%/−10%，不做红黄橙评价。
 _CAL_NAV = {}
 _cal_nav = 1.0
 _cal_peak = 1.0
@@ -3247,9 +3279,10 @@ def _cal_month_html(y, m, build_day):
                 # CX 验收遗留2：组合当日浮动（与作战台同一派生口径）；取不到如实标注
                 _fl = _CAL_FLOAT.get(ds)
                 if _fl is not None and _fl["pct"] is not None:
-                    _flt_tip = (f'组合当日浮动（与作战台同一派生口径）：当日持仓（建仓日早于当日）中 '
-                                f'kline_incr_HRS_{ds}.csv 有官方涨跌幅的个股涨跌幅等权和 ÷ {_CAL_CAP} 席；'
-                                f'ETF 与当日新进票计 0；覆盖 {_fl["cov"]}/{_CAL_CAP}；覆盖率<50% 不硬算。')
+                    _flt_tip = (f'组合当日浮动（与作战台同一派生口径，B′）：当日持仓（建仓日早于当日）中 '
+                                f'kline_incr_HRS_{ds}.csv 有官方涨跌幅的个股涨跌幅等权和，'
+                                f'另加 ETF(510300) 前复权收益（有 bar 才计入），÷ {_CAL_CAP} 席；'
+                                f'当日新进票与 ETF 无 bar 日计 0、不计覆盖；覆盖 {_fl["cov"]}/{_CAL_CAP}；覆盖率<50% 不硬算。')
                     inner += (f'<div class="dim calnote" title="{html.escape(_flt_tip, quote=True)}">'
                               f'组合 {_fl["pct"]:+.2f}%（{_fl["cov"]}/{_CAL_CAP}）</div>')
                 else:
