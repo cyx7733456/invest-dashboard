@@ -128,10 +128,10 @@ table:not(.caltbl) th:nth-child(2),table:not(.caltbl) td:nth-child(2){text-align
 </div>
 
 <h2>本日执行卡（精简视图 · 2~3 只股票 + 1 只 ETF）</h2>
-<table><tr><th>标的</th><th>触发价（口径）</th><th>止损锚</th><th>止盈锚</th><th>共识票数</th></tr><tr><td><b>510300</b> 沪深300ETF <span class="tag">ETF 固定腿</span></td><td>4.083 <span class="dim">(bfq)</span></td><td>—</td><td>—</td><td>N/A</td></tr><tr><td><b>sz000333</b> 美的集团 <span class="tag">股票</span></td><td>92.680 <span class="dim">(裸价)</span></td><td>83.412</td><td>106.582</td><td>3</td></tr><tr><td><b>sh601965</b> 中国汽研 <span class="tag">股票</span></td><td>15.200 <span class="dim">(qfq)</span></td><td>13.680</td><td>18.240</td><td>2</td></tr><tr><td><b>sh601825</b> 沪农商行 <span class="tag">股票</span></td><td>9.550 <span class="dim">(qfq)</span></td><td>8.600</td><td>11.460</td><td>2</td></tr></table><div class="sub" style="margin-top:6px">共 4 行 = 固定腿 ETF 1 只 + 精选股票 3 只（同行业限 1 只，按共识票数→当日打分排序）；意向非成交，不改动任何模拟盘持仓。全量卡约 30~40 行，已降级为下方折叠备查。</div>
+<table><tr><th>标的</th><th>触发价（口径）</th><th>止损触发线</th><th>止盈锚</th><th>共识票数</th><th>实际执行价</th></tr><tr><td><b>510300</b> 沪深300ETF <span class="tag">ETF 固定腿</span></td><td>4.083 <span class="dim">(bfq)</span></td><td>—</td><td>—</td><td>N/A</td><td>取不到（意向非成交，无实际执行）</td></tr><tr><td><b>sz000333</b> 美的集团 <span class="tag">股票</span></td><td>92.680 <span class="dim">(裸价)</span></td><td>83.412</td><td>106.582</td><td>3</td><td>取不到（意向非成交，无实际执行）</td></tr><tr><td><b>sh601965</b> 中国汽研 <span class="tag">股票</span></td><td>15.200 <span class="dim">(qfq)</span></td><td>13.680</td><td>18.240</td><td>2</td><td>取不到（意向非成交，无实际执行）</td></tr><tr><td><b>sh601825</b> 沪农商行 <span class="tag">股票</span></td><td>9.550 <span class="dim">(qfq)</span></td><td>8.600</td><td>11.460</td><td>2</td><td>取不到（意向非成交，无实际执行）</td></tr></table><div class="sub" style="margin-top:6px">共 4 行 = 固定腿 ETF 1 只 + 精选股票 3 只（同行业限 1 只，按共识票数→当日打分排序）；意向非成交，不改动任何模拟盘持仓。实际执行价列当前无成交来源，一律标「取不到」，⛔ 不以触发价/止损触发线回填。全量卡约 30~40 行，已降级为下方折叠备查。</div>
 
 <details><summary>全量备查 · 共识买入表（行业共识 ≥2 组 · 意向非成交 · 28 只）</summary>
-<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sz000333</td><td>美的集团</td>
+<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损触发线</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sz000333</td><td>美的集团</td>
 <td>买入</td><td><span class="gbadge">WB,CX</span> <span class='dim'>共识 3/5</span></td>
 <td>家用电器</td><td>92.680 <span class="dim">(裸价)</span></td>
 <td>83.412</td><td>106.582</td>
@@ -249,7 +249,7 @@ table:not(.caltbl) th:nth-child(2),table:not(.caltbl) td:nth-child(2){text-align
 </details>
 
 <details><summary>全量备查 · 观察票表（未达共识门槛 · 非推荐 · 11 只）</summary>
-<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sh600892</td><td>大晟文化</td>
+<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损触发线</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sh600892</td><td>大晟文化</td>
 <td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
 <td>传媒</td><td>6.100 <span class="dim">(裸价)</span></td>
 <td>5.490</td><td>7.015</td>
@@ -1014,8 +1014,8 @@ new_picks 覆盖：5/5 组已提供字段（其中 4 组当日有新增推荐、
 </div>
 </details>
 
-<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损为机械参考位，跳空/跌停情形条件单可能不成交。</div>
+<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损触发线为机械参考位，跳空/跌停情形条件单可能不成交。</div>
 
 </div>
-<footer>页面构建时刻：2026-11-17 19:50（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+<footer>页面构建时刻：2026-11-17 23:13（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
 </body></html>

@@ -209,6 +209,70 @@ def latest_report(g):
 
 R = {g: latest_report(g) for g in GROUPS}  # 持仓明细用最新一份
 
+# ===== 2026-11-17 P0：止损有效性读侧防御性渲染（只读，不改各组上报脚本/上报件 JSON） =====
+# CX 定案：一律读 report["stop_validity"]["map"][code]；字段缺失或 code 不在 map 内 ⇒ unknown，
+# 显示「止损有效性未上报」，⛔ 不得默认 armed；同时透出 data_gaps 中
+# 「无有效止损（条件单14天到期未续）」。仅读侧，不改任何数据字段 key。
+_SV_LABEL = {
+    "armed":   "已挂（有效期内）",
+    "expired": "无有效止损",
+    "none":    "本组无止损规则/未设",
+    "exempt":  "固定腿豁免",
+    "unknown": "止损有效性未上报",
+}
+
+def _stop_validity_info(code, g=None, date=None):
+    # 返回 (显示串, data_gaps提示)；只读上报件。字段缺失/不在 map ⇒ unknown。
+    code = str(code or "")
+    _cands = []
+    if g:
+        if date:
+            try:
+                _rp = load_report(g, date)
+            except (OSError, ValueError, UnicodeDecodeError):
+                _rp = None
+            if isinstance(_rp, dict):
+                _cands.append(_rp)
+        if isinstance(R.get(g), dict):
+            _cands.append(R[g])
+    if not _cands:
+        _cands = [x for x in R.values() if isinstance(x, dict)]
+    _state = "unknown"
+    _gap = ""
+    for _rep in _cands:
+        _sv = _rep.get("stop_validity")
+        _map = _sv.get("map") if isinstance(_sv, dict) else None
+        if isinstance(_map, dict) and code and code in _map:
+            _v = _map[code]
+            _s = _v.get("state") if isinstance(_v, dict) else _v
+            _s = str(_s or "unknown")
+            _state = _s if _s in _SV_LABEL else "unknown"
+            break
+    for _rep in _cands:
+        _gaps = _rep.get("data_gaps")
+        if not isinstance(_gaps, list):
+            continue
+        for _x in _gaps:
+            _t = (_x if isinstance(_x, str)
+                  else (json.dumps(_x, ensure_ascii=False) if isinstance(_x, (dict, list)) else ""))
+            if "无有效止损" in _t or "14天到期未续" in _t or "14 天到期未续" in _t:
+                _gap = "无有效止损（条件单14天到期未续）"
+                break
+        if _gap:
+            break
+    return _SV_LABEL[_state], _gap
+
+def _stop_validity_cell(code, g=None, date=None):
+    # 逐票表格单元：防御性渲染。unknown/expired 用 warn 色，其余 dim；⛔ 不默认 armed。
+    _label, _gap = _stop_validity_info(code, g, date)
+    _cls = "warn" if _label in ("无有效止损", "止损有效性未上报") else "dim"
+    _s = (f'<span class="{_cls}" title="止损有效性：读上报件 stop_validity.map；'
+          f'字段缺失或未上报一律按未上报处理，不默认已挂">{html.escape(_label)}</span>')
+    if _gap:
+        _s += f'<div class="sub warn">{html.escape(_gap)}</div>'
+    return _s
+
+
 # ---------- 风向标（v2.2）----------
 def _read_day(g, d, mv):
     """报告日 ≠ 读数日（3组 2026-10-28 函建议④：两格分开，否则跨日趋势会把同日截面画成两天判断）。
@@ -482,7 +546,7 @@ def pick_table(rows, date, kind):
 <td>{ind_s}</td><td>{html.escape(r['买入参考价/触发价'])} <span class="dim">({html.escape(r.get('价格口径') or '')})</span></td>
 <td>{sl or '<span class=dim>未上报</span>'}</td><td>{tp or '<span class=dim>未上报</span>'}</td>
 <td>{pos_hint(r)}</td></tr>"""
-    return f"""<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损</th><th>止盈</th><th>仓位提示</th></tr>{tr}</table>
+    return f"""<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损触发线</th><th>止盈</th><th>仓位提示</th></tr>{tr}</table>
 <div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>
 <div class="sub">{POS_NOTE}</div>"""
 
@@ -618,7 +682,7 @@ for _d in CARD_DATES:
                 rec["mdd"] = min(cl for _, cl in _mids) / _e[1] - 1
             else:
                 rec["mdd"] = 0.0
-        # 状态判定：仅对卡面价格为裸价（bfq）口径且止盈/止损为数值的行，用 bfq 收盘价对比（盘中触发不计）
+        # 状态判定：仅对卡面价格为裸价（bfq）口径且止盈/止损触发线为数值的行，用 bfq 收盘价对比（盘中触发不计）
         _tp, _sl = _fnum(rec["tp"]), _fnum(rec["sl"])
         if _basis == "裸价" and _tp is not None and _sl is not None and _sym:
             rec["status"] = "未触发"
@@ -636,9 +700,9 @@ for _d in CARD_DATES:
         elif _basis != "裸价":
             rec["status"] = "不判定（卡面价为复权口径，与 bfq 不可比）"
         elif _is_unset_decl(rec["tp"]) or _is_unset_decl(rec["sl"]):
-            rec["status"] = "不判定（本组声明未设止盈/止损价位）"  # 2026-11-05「2算」裁定
+            rec["status"] = "不判定（本组声明未设止盈/止损触发线价位）"  # 2026-11-05「2算」裁定
         else:
-            rec["status"] = "未判定（止盈/止损未上报或非数值）"
+            rec["status"] = "未判定（止盈/止损触发线未上报或非数值）"
         TRACK.append(rec)
 
 # 买入档等权组合 vs 沪深300（同窗匹配：每票自其推荐日 bfq 收盘买入持有至最新；基准取同窗指数收益均值）
@@ -1133,7 +1197,7 @@ for i, r in enumerate(TOP3):
     top3_html += f"""<div class="card"><span class="lab">{i+1}. {html.escape(r['名称'])}（{r['代码']}）· {ind_s}</span>
 <b class="up">{html.escape(r['动作'].split('（')[0])}</b> <span class="gbadge">{GD.get(r['组'], html.escape(r['组']))}</span>
 <span class="dim">共识 {html.escape(r.get('共识票数') or '—')}/5 组</span><br>
-<span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
+<span class="dim">触发价 {r['买入参考价/触发价']}（{r['价格口径']}）｜ 止损触发线 {r['止损价/锚']} ｜ 止盈 {r['止盈价/锚']}</span><br>
 <span class="dim">仓位提示 {pos_hint(r)}</span><br>
 <span class="dim">有效期 {r['有效期(天)']} 天（<span title="WB 卡面「有效期(天)」= 除权预警扫描窗口默认值（as_of~14天+3缓冲，源 dividend_factor_WB.csv），非各组上报持有期；例证：QD 件 horizon=20。2026-11-05 22:30 广播 §三已认领">WB除权预警窗口，非上报持有期</span>）｜ 意向非成交</span></div>"""
 
@@ -1147,8 +1211,8 @@ for g in GROUPS:
 
 entries = [
     ("实盘作战台", "ops/index.html", "持仓跟踪 · 今日动作 · 候选池 · 五组重点池"),
-    ("历史实盘卡与跟踪归档", "track/index.html", "历次推荐逐票跟踪归档：收益/回撤/止盈止损触发状态（bfq 口径）；原「推荐跟踪」入口已归档至此"),
-    ("战绩日历", "calendar/index.html", "投资以来逐日战绩月历：买入/观察数、卡内战绩%、止损止盈触发、沪深300 对照"),
+    ("历史实盘卡与跟踪归档", "track/index.html", "历次推荐逐票跟踪归档：收益/回撤/止盈止损触发线状态（bfq 口径）；原「推荐跟踪」入口已归档至此"),
+    ("战绩日历", "calendar/index.html", "投资以来逐日战绩月历：买入/观察数、卡内战绩%、止损/止盈触发线、沪深300 对照"),
     ("模拟盘赛马", "sim/index.html", "五组净值对比曲线、日胜率与当前持仓明细"),
     ("市场分析", "market/index.html", "A股当前状态分位 · 历史相似段扫描 · 切换信号清单"),
     ("策略档案", "strategies/index.html", "五组策略卡片墙（版本待契约回填）"),
@@ -1244,7 +1308,10 @@ def exec_card_rows(date):
 
 
 def exec_card_html(date):
-    """执行卡固定 5 列表；无执行卡 → 灰态，不编造、不回落全量表充当精简视图。"""
+    """执行卡固定 6 列表；无执行卡 → 灰态，不编造、不回落全量表充当精简视图。
+    2026-11-17 P0：新增独立列「实际执行价」——当前全链路无真实成交价来源，一律如实标
+    「取不到（意向非成交，无实际执行）」，禁止用触发价/止损触发线回填；与桌面渲染共用
+    exec_card_rows(date) 唯一取数函数，避免双实现字段漂移。"""
     _rows = exec_card_rows(date)
     if _rows is None:
         return ('<div class="riskfoot">取不到：本日无精简执行卡'
@@ -1260,14 +1327,17 @@ def exec_card_html(date):
         _tp = html.escape(_r.get("止盈价/锚") or "—")
         _cons = html.escape(_r.get("共识票数") or "—")
         _basis = html.escape(_r.get("价格口径") or "—")
+        # 实际执行价：无成交来源一律如实标取不到；⛔ 禁止用触发价/止损触发线回填
+        _exec_px = "取不到（意向非成交，无实际执行）"
         _tr += (f'<tr><td><b>{_code}</b> {_name} <span class="tag">{_typ}</span></td>'
                 f'<td>{_trig} <span class="dim">({_basis})</span></td><td>{_sl}</td>'
-                f'<td>{_tp}</td><td>{_cons}</td></tr>')
-    return (f'<table><tr><th>标的</th><th>触发价（口径）</th><th>止损锚</th>'
-            f'<th>止盈锚</th><th>共识票数</th></tr>{_tr}</table>'
+                f'<td>{_tp}</td><td>{_cons}</td><td>{_exec_px}</td></tr>')
+    return (f'<table><tr><th>标的</th><th>触发价（口径）</th><th>止损触发线</th>'
+            f'<th>止盈锚</th><th>共识票数</th><th>实际执行价</th></tr>{_tr}</table>'
             f'<div class="sub" style="margin-top:6px">共 {len(_rows)} 行 = 固定腿 ETF 1 只 + '
             f'精选股票 {len(_rows)-1} 只（同行业限 1 只，按共识票数→当日打分排序）；'
-            f'意向非成交，不改动任何模拟盘持仓。全量卡约 30~40 行，已降级为下方折叠备查。</div>')
+            f'意向非成交，不改动任何模拟盘持仓。实际执行价列当前无成交来源，一律标「取不到」，'
+            f'⛔ 不以触发价/止损触发线回填。全量卡约 30~40 行，已降级为下方折叠备查。</div>')
 
 
 # ================= R1：live/ 入口页 =================
@@ -1411,7 +1481,7 @@ for d in CARD_DATES:
 <div>{cbody}</div>
 </details>
 
-<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损为机械参考位，跳空/跌停情形条件单可能不成交。</div>
+<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损触发线为机械参考位，跳空/跌停情形条件单可能不成交。</div>
 """
     out = page("实盘详情", body, depth=1)
     # 卡片自带样式插到站内主样式之前，站内骨架样式优先
@@ -1653,7 +1723,9 @@ for r in sorted(TRACK, key=lambda x: (x["d"], x["g"], x["code"]), reverse=True):
               f'<td>{html.escape(r["code"])}</td><td>{html.escape(r["name"])}</td><td>{html.escape(r["act"])}</td>'
               f'<td>{html.escape(r["ref"] or "—")} <span class="dim">({html.escape(r["basis"])})</span></td>'
               f'<td>{entry_s}</td><td>{last_s}</td><td>{ret_s}</td><td>{mdd_s}</td><td>{days_s}</td>'
-              f'<td>{tp_s}</td><td>{sl_s}</td><td><span class="{st_cls}">{html.escape(st_s)}</span></td></tr>')
+              f'<td>{tp_s}</td><td>{sl_s}</td>'
+              f'<td>{_stop_validity_cell(r["code"], r["g"], r["d"])}</td>'
+              f'<td><span class="{st_cls}">{html.escape(st_s)}</span></td></tr>')
 
 combo_cards = f"""
 <div class="grid g6" style="margin-top:12px">
@@ -1761,7 +1833,7 @@ for ind in _ind_order:
             st_s = '<span style="color:var(--warn)">●</span> 未到期观察'
         else:
             st_s = (f'<span style="color:var(--acc)">●</span> 在持 '
-                    f'<span class="dim" title="{html.escape(st_v)}">（止盈止损不判定）</span>')
+                    f'<span class="dim" title="{html.escape(st_v)}">（止盈/止损触发线不判定）</span>')
         tr_i += (f'<tr><td>{html.escape(r["code"])} {html.escape(r["name"])}</td>'
                  f'<td><span class="gbadge">{GD.get(r["g"], html.escape(r["g"]))}</span></td>'
                  f'<td>{html.escape(str(cons_v))}</td><td>{r["d"]}</td>'
@@ -1777,7 +1849,7 @@ for ind in _ind_order:
                       f'<table><tr><th>代码名称</th><th>组</th><th>共识</th><th>推荐日</th>'
                       f'<th>推荐价（bfq）</th><th>现价（实时·构建时点）</th><th>浮盈%</th>'
                       f'<th>自推荐日起收益%（bfq）</th>'
-                      f'<th>止盈锚</th><th>止损锚</th><th>建议仓位</th><th>持有时长</th><th>状态</th></tr>'
+                      f'<th>止盈锚</th><th>止损触发线</th><th>建议仓位</th><th>持有时长</th><th>状态</th></tr>'
                       f'{tr_i}</table></details>')
 
 _rt_note = (f'现价快照 {RT_SNAP_S}' if RT_OK
@@ -1891,16 +1963,16 @@ def _pt_basis(row, is_etf):
 
 
 def _pt_anchor(row):
-    """止损 / 止盈锚：展示 meta 里的 anchor 数值；tooltip 带原始卡面值（sl_raw_anchor /
+    """止损触发线 / 止盈锚：展示 meta 里的 anchor 数值；tooltip 带原始卡面值（sl_raw_anchor /
     tp_raw_anchor）原文，并注明标度差异 —— hfq 原始卡面价与 bfq 纸面纳入价不可直接比较。"""
     _sl, _tp = _pt_num(row.get("stop_loss_anchor")), _pt_num(row.get("take_profit_anchor"))
     _slr, _tpr = _pt_num(row.get("sl_raw_anchor")), _pt_num(row.get("tp_raw_anchor"))
     _sl_s = _sl if _sl else '<span class="dim">未提供</span>'
     _tp_s = _tp if _tp else '<span class="dim">未提供</span>'
-    _tip = (f"原始卡面值：止损 {_slr or '未提供'} / 止盈 {_tpr or '未提供'}。"
+    _tip = (f"原始卡面值：止损触发线 {_slr or '未提供'} / 止盈 {_tpr or '未提供'}。"
             "原始卡面值为该卡当日的绝对价（可能是 hfq 标度），与纸面纳入价不同标度，勿直接比较。")
     return (f'<span title="{html.escape(_tip, quote=True)}">'
-            f'止损 {_sl_s} / 止盈 {_tp_s}</span>')
+            f'止损触发线 {_sl_s} / 止盈 {_tp_s}</span>')
 
 
 def _pt_state(row):
@@ -2171,7 +2243,7 @@ def portfolio_track_html():
         _seats += [None] * (_cap - len(_seats))
 
     # 区2 席位主表：12 列固定（席位 / 名称代码 / 建仓日 / 纸面纳入价 / 纸面现价 /
-    # 逐票收益 / 今日·最近一日操作 / 名义仓位 / 仓位变动 / 持有 / 建仓逻辑 / 止损止盈锚）
+    # 逐票收益 / 今日·最近一日操作 / 名义仓位 / 仓位变动 / 持有 / 建仓逻辑 / 止损触发线/止盈锚）
     _op_tip = f"{_op_label}（{_ao_s or '取不到'}，上游 today_op 字段）"
     _head = ('<tr><th title="席位号（容量 cap 取 meta.cap）">席位</th>'
              '<th>证券名称 / 代码</th><th>建仓日</th>'
@@ -2183,7 +2255,7 @@ def portfolio_track_html():
              '<th title="由 state_from → state_to 推导；中性色，非涨跌">仓位变动</th>'
              '<th title="days 快照中含该票的交易日数（建仓当日算 1），非自然日">持有</th>'
              '<th title="上游主卡 basis 原文引用，保留原始措辞、未改写未过滤">建仓逻辑（上游原文引用）</th>'
-             '<th title="数值为 meta 内锚位；原始卡面值见每格 tooltip">止损 / 止盈锚</th></tr>')
+             '<th title="数值为 meta 内锚位；原始卡面值见每格 tooltip">止损触发线 / 止盈锚</th></tr>')
     _trs = ""
     for _i, _r in enumerate(_seats, 1):
         if _r is None:                       # 空席：如实写「（空席）」，各列留空，不补造
@@ -2230,7 +2302,7 @@ def portfolio_track_html():
     # 「未判定 ≠ 可持有」口径说明恒显；若确有「未判定」行再叠加一条显式警示
     _all = [r for r in _seats if r is not None] + [e for e in _exited if isinstance(e, dict)]
     _has_ud = any("未判定" in str(v) for r in _all for v in r.values() if v is not None)
-    _foot = ('<div class="sub" style="margin-top:6px">口径：止损 / 止盈锚为原值展示；'
+    _foot = ('<div class="sub" style="margin-top:6px">口径：止损触发线 / 止盈锚为原值展示；'
              '<b>未判定 ≠ 可持有</b>——锚位标注「未判定」的行不代表已通过风控、亦不代表可继续持有，'
              '仅为该锚位数据未提供 / 未判定，如实标注，不推演、不补值。'
              '「建仓逻辑」列为上游主卡 basis 原文引用（clip_note 截 60 字），保留其原始措辞、'
@@ -2274,7 +2346,7 @@ def portfolio_track_html():
                     '<th>调出日</th>'
                     '<th title="按 days 快照中含该票的交易日数计（与区2「持有」同算法），非自然日">存续天数</th>'
                     '<th>存续期收益</th><th>调出原因</th>'
-                    '<th title="数值为锚位；原始卡面值见 tooltip">止损 / 止盈锚</th></tr>'
+                    '<th title="数值为锚位；原始卡面值见 tooltip">止损触发线 / 止盈锚</th></tr>'
                     f'{_ex_tr}</table>')
     _ex_sec = ('<div class="sub" style="margin-top:14px"><b>已调出</b>'
                '（同容量约束下走一个才补一个的历史席位；收益一律为调出当日口径的「存续期收益」；'
@@ -2311,7 +2383,7 @@ def portfolio_track_html():
             _irs = (html.escape(clip_note(str(_irsn), 60)) if _irsn not in (None, "")
                     else '<span class="dim">未提供</span>')
             _itp, _isl = _pt_num(_x.get("take_profit")), _pt_num(_x.get("stop_loss"))
-            _ianc = (f'止盈 {_itp or "未提供"} / 止损 {_isl or "未提供"}')
+            _ianc = (f'止盈 {_itp or "未提供"} / 止损触发线 {_isl or "未提供"}')
             _isig_s = _isig if _isig else '<span class="dim">未提供</span>'
             _itr += (f'<tr><td><b>{_ic}</b></td><td>{_inm}</td><td>{_iind}</td>'
                      f'<td>{_isig_s}</td>'
@@ -2319,7 +2391,7 @@ def portfolio_track_html():
         _i_body = ('<table><tr><th>代码</th><th>名称</th><th>行业</th>'
                    '<th title="上游 sig_score 原值；总腿数未提供，不折算比例">信号腿数</th>'
                    '<th title="上游 reason 原文，clip_note 截 60 字">理由（上游原文）</th>'
-                   '<th title="卡面原始价（hfq 口径），不可与主表纸面纳入价比较">卡面止盈 / 止损</th></tr>'
+                   '<th title="卡面原始价（hfq 口径），不可与主表纸面纳入价比较">卡面止盈 / 止损触发线</th></tr>'
                    f'{_itr}</table>')
     _sec4 = ('<div style="border:1px dashed var(--line);border-radius:8px;'
              'padding:10px 14px;margin-top:14px">'
@@ -2368,7 +2440,7 @@ def portfolio_track_html():
 body = f"""
 <h1>推荐跟踪</h1>
 <div class="sub">覆盖 {CARD_DATES[0]} ~ {CARD_DATES[-1]} 历史每日实盘卡的逐条推荐（2026-10-23 卡仅表头无逐票行，如实为空）｜ 📊 <a href="../calendar/index.html">战绩日历 →</a></div>
-<div class="riskfoot">📌 页头声明：跟踪收益 = 假想在推荐日按 <b>bfq 收盘价</b>买入的纸面收益（bfq 对 bfq，不复权），<b>非各组模拟盘实际持仓盈亏</b>，亦非用户真实账户盈亏。卡面参考价列为卡面原始价（旧卡为 hfq/qfq 复权口径，仅展示、不用于收益计算——收益基准统一改用推荐日 bfq 收盘价，逐行列出）。状态判定：以 bfq <b>收盘价</b>对比卡面止盈/止损，盘中触发不计；仅对卡面价格为裸价（bfq）口径的行判定，复权口径行如实标「不判定」。</div>
+<div class="riskfoot">📌 页头声明：跟踪收益 = 假想在推荐日按 <b>bfq 收盘价</b>买入的纸面收益（bfq 对 bfq，不复权），<b>非各组模拟盘实际持仓盈亏</b>，亦非用户真实账户盈亏。卡面参考价列为卡面原始价（旧卡为 hfq/qfq 复权口径，仅展示、不用于收益计算——收益基准统一改用推荐日 bfq 收盘价，逐行列出）。状态判定：以 bfq <b>收盘价</b>对比卡面止盈/止损触发线，盘中触发不计；仅对卡面价格为裸价（bfq）口径的行判定，复权口径行如实标「不判定」。</div>
 {combo_cards}
 <h2>跟踪组合（有限容量 · 有进有出 · 只看逐票收益）</h2>
 <div class="sub" style="margin:4px 0 8px">上方 6 张统计卡为「历史累计纸面跟踪」口径（{COMBO["n_track"]} 条、全部历史卡逐条等权、无容量约束），<b>不是本跟踪组合的成绩</b>；本页主位为有限容量跟踪组合（逐票收益），当日执行卡与全量历史跟踪均已降级为下方折叠备查。</div>
@@ -2377,14 +2449,14 @@ body = f"""
 {exec_card_html(LATEST)}
 </details>
 <details><summary>全量历史跟踪备查（非今日操作清单）</summary>
-<h2>当前在跟踪（{len(CUR_TRACK)} 只 · 买入档且止盈止损未触发）</h2>
-<div class="sub">过滤规则：全部历史卡「动作=买入」且 TRACK 止盈止损状态未触发（含未到期观察、复权口径不判定行）；已触止损/已触止盈移出。排序：行业按等权收益降序（收益高在前、无有效收益的行业排最后）、行业内按个股 bfq 自推荐日起收益降序；口径缺失票排最后；按行业折叠展示（行业取自当日上报件 industry 字段，查不到如实标「行业未上报」）。表内「自推荐日起收益%（bfq）」为排序依据（与页头声明/组合卡同口径），「浮盈%」为实时裸价参考、不参与排序。行业统计口径：等权收益 = 行业内各票自其推荐日 bfq 收盘起算收益的算术平均（等权、各票入场日不同），为纸面跟踪，非组合真实收益、非用户真实账户盈亏；行业标题与表前小字的时间段 = 该行业最早关注日（推荐日）~ 价格源最新交易日（bfq），截止日取不到如实标；同期沪深300 按该最早关注日 → 价格源最新的单窗口区间涨跌幅，指数取不到标「基准取不到」；无 bfq 价源票不计入等权、如实标「口径缺失」。{_rt_note}；浮盈=实时裸价 ÷ 推荐日 bfq 收盘 − 1（TRACK 无 bfq 推荐价的票如实标「口径缺失」不硬算；除权除息不修正，仅参考）。建议仓位/持有时长读各组最新上报件真实字段（实测：仓位仅 3组/4组、持有时长仅 3组/2组/5组提供），缺如实标「未提供」。状态：●蓝=在持、●黄=未到期观察。卡 csv 的股数/金额/本笔最大亏损/占账户% 4 列在全部历史卡恒为空，跟踪视图不展示（数据源未提供，非删数据）。</div>
+<h2>当前在跟踪（{len(CUR_TRACK)} 只 · 买入档且止盈止损触发线未触发）</h2>
+<div class="sub">过滤规则：全部历史卡「动作=买入」且 TRACK 止盈止损触发线状态未触发（含未到期观察、复权口径不判定行）；已触止损/已触止盈移出。排序：行业按等权收益降序（收益高在前、无有效收益的行业排最后）、行业内按个股 bfq 自推荐日起收益降序；口径缺失票排最后；按行业折叠展示（行业取自当日上报件 industry 字段，查不到如实标「行业未上报」）。表内「自推荐日起收益%（bfq）」为排序依据（与页头声明/组合卡同口径），「浮盈%」为实时裸价参考、不参与排序。行业统计口径：等权收益 = 行业内各票自其推荐日 bfq 收盘起算收益的算术平均（等权、各票入场日不同），为纸面跟踪，非组合真实收益、非用户真实账户盈亏；行业标题与表前小字的时间段 = 该行业最早关注日（推荐日）~ 价格源最新交易日（bfq），截止日取不到如实标；同期沪深300 按该最早关注日 → 价格源最新的单窗口区间涨跌幅，指数取不到标「基准取不到」；无 bfq 价源票不计入等权、如实标「口径缺失」。{_rt_note}；浮盈=实时裸价 ÷ 推荐日 bfq 收盘 − 1（TRACK 无 bfq 推荐价的票如实标「口径缺失」不硬算；除权除息不修正，仅参考）。建议仓位/持有时长读各组最新上报件真实字段（实测：仓位仅 3组/4组、持有时长仅 3组/2组/5组提供），缺如实标「未提供」。状态：●蓝=在持、●黄=未到期观察。卡 csv 的股数/金额/本笔最大亏损/占账户% 4 列在全部历史卡恒为空，跟踪视图不展示（数据源未提供，非删数据）。</div>
 {_cur_sections}
 </details>
 <details><summary>完整历史明细（全部日期全部行，共 {COMBO["n_track"]} 条）</summary>
 <h2>逐票跟踪表</h2>
 <table>
-<tr><th>推荐日</th><th>来源组</th><th>代码</th><th>名称</th><th>档位</th><th>卡面参考价（口径）</th><th>收益基准价（bfq，日期）</th><th>最新价（bfq，日期）</th><th>自推荐日起收益%</th><th>最大回撤%</th><th>持仓交易日</th><th>止盈价</th><th>止损价</th><th>当前状态</th></tr>
+<tr><th>推荐日</th><th>来源组</th><th>代码</th><th>名称</th><th>档位</th><th>卡面参考价（口径）</th><th>收益基准价（bfq，日期）</th><th>最新价（bfq，日期）</th><th>自推荐日起收益%</th><th>最大回撤%</th><th>持仓交易日</th><th>止盈价</th><th>止损触发线</th><th>止损有效性</th><th>当前状态</th></tr>
 {trows}
 </table>
 <div class="sub">最大回撤% = 推荐日之后至最新 bfq 最低收盘 / 推荐日 bfq 收盘 − 1（仅收盘口径，盘中低点不计）。持仓交易日 = 推荐日之后至价格源最新的 bfq 交易日数（10-29 卡为 0 属正常，尚无后续交易日）。收益基准价 = 推荐日当日 bfq 收盘（当日停牌等取不到时取 ≤ 推荐日最近一行）。组合等权口径：每票 1/N 买入持有至最新，各票入场日不同；基准为同窗匹配的沪深300 收益均值（index_hist.csv sh000300，截至 {IDX_ASOF or "取不到"}，与价格源对齐）。</div>
@@ -2407,7 +2479,7 @@ def _ops_na(text=None, reason="CX 函要求该字段，但纸面口径/数据源
 
 
 def _ops_dist(last_close, anchor, mode):
-    """距止损=(last−anchor)/last×100；距止盈=(anchor−last)/last×100；null/—/0 → —。bfq 同标度。"""
+    """距止损触发线=(last−anchor)/last×100；距止盈=(anchor−last)/last×100；null/—/0 → —。bfq 同标度。"""
     try:
         _lc, _an = float(last_close), float(anchor)
     except (TypeError, ValueError):
@@ -2510,6 +2582,33 @@ def _ops_pct_chg(as_of):
         return {}
     return _out
 
+
+
+
+def _trigger_not_exec_html():
+    # 2026-11-17 P0：每日收盘「已触发未执行」清单——基于 TRACK 已触止损状态。
+    # 是否已执行/真实成交价当前无任何上报来源，如实标「执行状态未上报」「待用户确认」，不臆断。
+    _hits = [r for r in TRACK if (r.get("status") or "") == "已触止损"]
+    if not _hits:
+        return ('<details open style="margin-top:12px"><summary>每日收盘 · 已触发未执行</summary>'
+                '<div class="sub">取不到：当前 TRACK 无「已触止损触发线」状态票，无可列清单。</div></details>')
+    _hits = sorted(_hits, key=lambda r: (r.get("status_d") or "", r.get("d") or ""), reverse=True)
+    _tr = ""
+    for _r in _hits:
+        _code = html.escape(str(_r.get("code") or ""))
+        _name = html.escape(str(_r.get("name") or ""))
+        _sl = html.escape(str(_r.get("sl") or "")) if _r.get("sl") not in (None, "") else "取不到"
+        _sd = html.escape(str(_r.get("status_d") or "取不到"))
+        _tr += (f'<tr><td><b>{_code}</b> {_name} <span class="dim">（止损触发日 {_sd}）</span></td>'
+                f'<td>{_sl}</td><td>待用户确认</td></tr>')
+    return ('<details open style="margin-top:12px"><summary>每日收盘 · 已触发未执行</summary>'
+            '<div class="sub" style="margin:6px 0">条件单到价仅推提醒，成交需用户手动确认；'
+            '本清单为意向非成交，不构成系统代为成交。执行状态未上报，'
+            '实际执行价一律标「待用户确认」，不臆断已成交。</div>'
+            '<table><tr><th>代码 / 名称</th><th>止损触发线价</th><th>实际执行价</th></tr>'
+            + _tr + '</table>'
+            f'<div class="sub">共 {len(_hits)} 只；数据源：TRACK 状态「已触止损」（bfq 收盘对比、盘中不计）。</div>'
+            '</details>')
 
 def ops_html():
     _d = _pt_load()
@@ -2619,7 +2718,7 @@ def ops_html():
         '<div class="sub" title="组合日收益（个股增量件 pct_chg + ETF 前复权 + 已调出票调出日收益，等权 6 席）逐日链乘 1+p；'
         '已调出票持仓期及其调出日收益均沉淀在链乘序列中">组合累计（含已实现，链乘）：<b>'
         + (f'{(_CAL_DD["nav"]-1)*100:+.2f}%' if _CAL_DD["n_days"] else "取不到") + '</b></div>'
-        '<div class="sub">风控口径：<b>纸面回放 · 止损 −10% · 硬红线 −20%，尚未接入实盘</b>；组合累计以链乘口径为准</div>'
+        '<div class="sub">风控口径：<b>纸面回放 · 止损触发线 −10% · 硬红线 −20%，尚未接入实盘</b>；组合累计以链乘口径为准</div>'
         + _dd_line)
     _status = (
         '<div class="card" style="margin-bottom:10px">'
@@ -2735,19 +2834,20 @@ def ops_html():
              '<th title="最新价（复权口径）；无当日行情显示 —">现价</th>'
              '<th title="当日涨跌幅；ETF 无当日行情、新进标的无前收参考时显示 —">今日涨跌</th>'
              '<th title="自建仓以来收益；红涨绿跌">累计收益</th>'
-             '<th title="明日操作建议：按快照日状态变化推导，指向下一交易日；持有格附当日涨跌/累计收益/距止损">明日操作建议</th>'
+             '<th title="明日操作建议：按快照日状态变化推导，指向下一交易日；持有格附当日涨跌/累计收益/距止损触发线">明日操作建议</th>'
              '<th title="仓位变化">仓位变动</th>'
-             '<th title="按现价与止损参考价计算；无参考价显示 —">距止损</th>'
+             '<th title="按现价与止损触发线参考价计算；无参考价显示 —">距止损触发线</th>'
              '<th title="按止盈参考价与现价计算；无参考价显示 —">距止盈</th>'
              '<th title="自建仓以来的交易日数（建仓当日算 1）">持有天数</th>'
              '<th title="来源组 · 共识票数；下方小字为打法摘要（优先当日上报件 strategy.summary 截 12 字，取不到由 basis 派生标「兜底」）">策略</th>'
              '<th title="所属行业">方向</th>'
-             '<th title="建仓理由原文（悬停看全文）">建仓逻辑</th></tr>')
+             '<th title="建仓理由原文（悬停看全文）">建仓逻辑</th>'
+             '<th title="读上报件 stop_validity.map；缺失/未上报按未上报显示，不默认已挂">止损有效性</th></tr>')
     _trs = ""
     for _i, _r in enumerate(_seats, 1):
         if _r is None or str(_r.get("code") or "") in ("", "（空席）"):
             _trs += (f'<tr><td><b>{_i}</b></td><td><span class="dim">（空席）· 待建仓</span></td>'
-                     + '<td class="dim">—</td>' * 13 + '</tr>')
+                     + '<td class="dim">—</td>' * 14 + '</tr>')
             continue
         _c = str(_r.get("code") or "")
         _is_etf = bool(_etf) and _c == _etf
@@ -2779,7 +2879,7 @@ def ops_html():
             _chg_plain = f'{_chg:+.2f}%' if _chg is not None else "取不到"
             _sl_s = _ops_dist(_lc, _r.get("stop_loss_anchor"), "sl")
             _op_s = (f'<b>明日持有</b><div class="sub">今日 {html.escape(_chg_plain)} ｜ '
-                     f'累计 {html.escape(_cum_s)} ｜ 距止损 {_sl_s}</div>')
+                     f'累计 {html.escape(_cum_s)} ｜ 距止损触发线 {_sl_s}</div>')
         else:
             _op_s = f'<b>{html.escape(_ops_tmr(_a5))}</b>'
         # 软7 一手可行性：一手=price×100；名义 5,000 元推导、硬上限 6,000 元
@@ -2818,13 +2918,14 @@ def ops_html():
                  f'<td>{_pt_industry(_r)}</td>'
                  + _ops_quote_cell(None if _is_etf else _r.get("basis"),
                                    "不适用（固定腿）" if _is_etf else "未提供")
+                 + f'<td>{_stop_validity_cell(_c, _r.get("group"), _ao)}</td>'
                  + '</tr>')
     _a5_names = sorted({_ops_tmr(_ops_action(_r2, _days)) for _r2 in _cur
                         if not _ops_action(_r2, _days).startswith("取不到")})
     _snap_s = "、".join(_a5_names) if _a5_names else "取不到"
     _table = ('<div class="sub" style="margin:8px 0 2px"><b>持仓明细</b></div>'
               '<table>' + _head + _trs + '</table>'
-              '<div class="sub" style="margin-top:6px">口径：距止损/距止盈按现价与参考价计算（复权口径）；无当日行情或参考价的显示「—」，不补零。今日涨跌与累计收益按红涨绿跌着色。ETF 无当日行情，如实显示「—」。<br>'
+              '<div class="sub" style="margin-top:6px">口径：距止损触发线/距止盈按现价与参考价计算（复权口径）；无当日行情或参考价的显示「—」，不补零。今日涨跌与累计收益按红涨绿跌着色。ETF 无当日行情，如实显示「—」。<br>'
               '今日涨跌覆盖 4/6（ETF 与新进标的无前收参考）；明日操作建议由快照日状态变化推导、指向下一交易日，仅供跟踪参考，不构成买卖指令。<br>'
               '明日操作建议分为明日建仓 / 明日加仓 / 明日持有 / 明日减仓 / 明日清仓五类；本快照：' + _snap_s + '。</div>')
 
@@ -2865,10 +2966,10 @@ def ops_html():
                     return None
 
             _tp_r, _sl_r = _anc_ratio(_itp), _anc_ratio(_isl)
-            _anc_s = (f'止盈 {_tp_r:+.2f}% / 止损 {_sl_r:+.2f}%'
+            _anc_s = (f'止盈 {_tp_r:+.2f}% / 止损触发线 {_sl_r:+.2f}%'
                       if _tp_r is not None and _sl_r is not None
                       else _ops_na("取不到", "缺少参考价，无法计算"))
-            _anc_tip_raw = '止盈 / 止损为相对最新价的比例，仅供参数参考'
+            _anc_tip_raw = '止盈锚 / 止损触发线为相对最新价的比例，仅供参数参考'
             _anc_tip = html.escape(_anc_tip_raw, quote=True)
             # 原始 hfq 值的小数点用 HTML 实体编码：渲染数字不变，仅避免与旧「绝对价异常显示」字面串混淆
             _anc_tip = _anc_tip.replace(".", "&#46;")
@@ -2877,7 +2978,7 @@ def ops_html():
                      f'<td class="dim">{_why}</td><td>{_anc}</td></tr>')
         _pool_body = ('<table><tr><th>代码</th><th>名称</th><th>行业</th><th>信号分</th>'
                       '<th>暂未买入原因</th>'
-                      '<th title="相对最新价的比例（%）">止盈 / 止损（相对最新价）</th></tr>'
+                      '<th title="相对最新价的比例（%）">止盈锚 / 止损触发线（相对最新价）</th></tr>'
                       + _ptr + '</table>')
     _pool = ('<div class="sub" style="margin:12px 0 2px"><b>候选池</b>'
              '（按信号分排序，展示前 3 只 · 供参考）</div>' + _pool_body)
@@ -3017,12 +3118,12 @@ def ops_html():
                 '<div class="sub" style="margin-top:4px">'
                 '口径四句原文：纸面推演 · 非真实持仓 · 意向非成交 · 回放重建、非历史发布<br>'
                 f'回放声明原文：{_rn_s}<br>'
-                '止损口径 −10%（用户 2026-11-17 拍板）<br>'
+                '止损触发线口径 −10%（用户 2026-11-17 拍板）<br>'
                 '配色：A股红涨绿跌（红=看多/上涨，绿=看空/下跌）；颜色只承载涨跌一个语义，'
                 '动作 / 状态 / 仓位一律用文字承载。组合层面展示逐票收益，不提供汇总收益/净值卡片。'
                 '</div></details>')
 
-    return (_dnav + _status + _concl_html + _act_html + _table
+    return (_dnav + _status + _concl_html + _act_html + _table + _trigger_not_exec_html()
             + _pool + _ex_sec + _archive + "".join(_combo) + _rn_card)
 
 
@@ -3275,12 +3376,12 @@ cal_total_cards = f"""
 <span class="dim" title="口径：先对每张有效卡取买入档各票 TRACK 收益（bfq 推荐日收盘→最新）中位数，再对 {len(_cal_meds)} 张卡取算术均值。逐卡：{CAL_MED_LIST}">median 卡内 → mean 卡间</span></div>
   <div class="card"><span class="lab">总胜率（按票计）</span><b>{pct(_cal_win/_cal_tot) if _cal_tot else "取不到"}</b><br>
 <span class="dim">{_cal_win_s} 只买入档收益 &gt; 0（bfq 口径，TRACK 实算）</span></div>
-  <div class="card"><span class="lab">累计触止损</span><b class="dn">{_cal_sl}</b><br>
+  <div class="card"><span class="lab">累计触止损触发线</span><b class="dn">{_cal_sl}</b><br>
 <span class="dim">复权口径行不判定、不计入</span></div>
   <div class="card"><span class="lab">累计触止盈</span><b class="up">{_cal_tp}</b><br>
 <span class="dim">复权口径行不判定、不计入</span></div>
 </div>
-<div class="sub" style="margin-top:6px">总格口径：全部来自 TRACK（bfq）实算，不手填；中位数抗极值。触发计数仅对卡面裸价口径且止盈/止损为数值的行判定（以 bfq 收盘对比，盘中不计）。</div>
+<div class="sub" style="margin-top:6px">总格口径：全部来自 TRACK（bfq）实算，不手填；中位数抗极值。触发计数仅对卡面裸价口径且止盈/止损触发线为数值的行判定（以 bfq 收盘对比，盘中不计）。</div>
 """
 
 def _cal_month_html(y, m, build_day):
@@ -3309,7 +3410,7 @@ def _cal_month_html(y, m, build_day):
                                   f'{pct(a["med"])}</div>')
                     else:
                         inner += f'<div class="dim calnote" title="{med_tip}">战绩取不到</div>'
-                    inner += f'<div class="dim calnote">止损×{a["sl"]} ｜ 止盈×{a["tp"]}</div>'
+                    inner += f'<div class="dim calnote">止损触发线×{a["sl"]} ｜ 止盈×{a["tp"]}</div>'
                     if ds == LATEST:
                         inner += '<div class="warn calnote">次日待收盘</div>'
                 idxp = IDX_PCT.get(ds)
@@ -3427,18 +3528,18 @@ replay_note 原文：{_CAL_RN_S}<br>
 配色口径：<b>红涨绿跌</b>（红=看多/上涨，绿=看空/下跌）；颜色只承载涨跌一个语义，动作/状态/仓位用文字承载。
 组合层面只展示逐票收益，不提供汇总收益/净值卡片。<br>
 单票展示 = 发布日收盘价买入 → 当日收盘价，等权，不计成本。<br>
-组合与日历 = 扣双边 30bp，毛收益与扣费后双列并出（纸面无成交口径时如实标取不到）。<br>
+组合与日历 = 扣双边 30bp，毛收益与扣费后双列并出（纸面无成交口径时如实标取不到）。（此为纸面/模拟盘口径；实盘记账 25.2bp，含最低5元下限）<br>
 纸面推演、非真实持仓、非成交记录。
 </div></details>
 """
 open(f"{OUT}/calendar/index.html", "w").write(page("战绩日历", body, depth=1))
 
 STRAT = {
- "WB": ("V9 月度调仓：反转 + 质量分打分，V6 现金滤镜；持仓 25 只，gate_id=V9，tier=满仓；止盈 +15% / 止损 −10%（自今日收盘价起算）。",
+ "WB": ("V9 月度调仓：反转 + 质量分打分，V6 现金滤镜；持仓 25 只，gate_id=V9，tier=满仓；止盈 +15% / 止损触发线 −10%（自今日收盘价起算）。",
         "C8 择时闸门为空壳（v9_live_signal_scan.py 仅注释占位）——如实转自 1组 2026-10-27 上报件 data_gaps。"),
  "CX": ("QF-1.2：Top100 事件式调仓批（最近批 entry_date=2026-10-08），暴露 E=0.50，risk 闸门（当前 34.65），禁杠杆；虚拟本金 100 万元计分。",
         "线索取自 2组 2026-10-27 上报件 strategy/tier/gate_id 字段与 data_gaps。"),
- "QD": ("QB：震荡 regime，等权 12 槽（当前 11 只持仓 + 1 现金槽），eq=0.590；选股为技术类认证变体 vol20_asc（20 日平均成交量升序）；无止损规则。",
+ "QD": ("QB：震荡 regime，等权 12 槽（当前 11 只持仓 + 1 现金槽），eq=0.590；选股为技术类认证变体 vol20_asc（20 日平均成交量升序）；无止损触发线规则。",
         "线索取自 3组 2026-10-26 上报件 tier/exit_rule/new_picks_basis 字段。"),
  "DSK": ("机械 R3 等权持有 15 只，无择时模型（market_view confidence=0）；成本按双边 30bp 实扣，post_anchor 严格边界。",
         "线索取自 4组 2026-10-27 上报件 market_view/data_gaps 字段。"),
