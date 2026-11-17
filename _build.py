@@ -107,11 +107,14 @@ TIER_ROWS = {}                      # g -> {tier: [(date, act_nav, n_hold)]}；�
 MULTI_TIER = {}                     # g -> bool：是否「含 tier 列且同日多行」
 navs = {}
 REF_NAV = {}   # g -> (最新日期, ref_nav) 或 None（2026-11-05 sim 页新增：参照净值 + 错失收益，HRS 20:33 函建议、用户批准）
+REF_SERIES = {}   # g -> [(date, ref_nav), ...]（多档组只收 steady 档；日历 HRS 参照差分用）
 for g in GROUPS:
     rows = []
     _ref = None
     _ref_by_tier = {}
     _by_tier = {}
+    _ref_series = []
+    _ref_series_by_tier = {}
     with open(f"{DATA}/simulated_nav_{g}.csv", newline="") as f:
         _rdr = csv.DictReader(f, delimiter="|")
         _has_tier = bool(_rdr.fieldnames) and "tier" in _rdr.fieldnames
@@ -128,6 +131,8 @@ for g in GROUPS:
                     _ref = (r["date"], _fv)          # 旧逻辑：逐行取最后一个非空 ref_nav
                     if _has_tier:
                         _ref_by_tier[_t] = (r["date"], _fv)
+                    _ref_series.append((r["date"], _fv))
+                    _ref_series_by_tier.setdefault(_t, []).append((r["date"], _fv))
                 except ValueError:
                     pass
     # 判据：含 tier 列 且 任一 date 在文件中出现 >1 行（同日多档）
@@ -141,6 +146,7 @@ for g in GROUPS:
     navs[g] = _by_tier[HRS_TIER] if (_multi and _by_tier.get(HRS_TIER)) else rows
     # 多档组 ref_nav 只认 steady 档（避免取到被排除档）；其余组沿用旧 _ref
     REF_NAV[g] = _ref_by_tier.get(HRS_TIER) if _multi else _ref
+    REF_SERIES[g] = _ref_series_by_tier.get(HRS_TIER) if _multi else _ref_series
 
 def metrics(g):
     rows = navs[g]
@@ -1858,6 +1864,18 @@ def _pt_strategy(row):
     return '<span class="dim">未提供</span>'
 
 
+def _ops_style(row):
+    """打法摘要：basis 首段（；/，分隔）去掉尾部括注后截短展示。
+    仅派生展示、原文引用不改写；basis 缺失如实「取不到」，不编造。"""
+    _b = row.get("basis")
+    if _b in (None, "", "未提供"):
+        return '<div class="sub dim" title="basis 未提供，打法摘要取不到">打法：取不到（basis 未提供）</div>'
+    _first = re.split(r"[；,，]", str(_b))[0].strip()
+    _first = re.sub(r"（[^）]*）$", "", _first).strip() or _first
+    return (f'<div class="sub" title="打法摘要由 basis 首段派生（原文引用不改写）：'
+            f'{html.escape(str(_b), quote=True)}">打法：{html.escape(clip_note(_first, 20))}</div>')
+
+
 def _pt_basis(row, is_etf):
     if is_etf:
         return '<span class="dim">不适用（固定腿）</span>'
@@ -2614,12 +2632,23 @@ def ops_html():
         _bs = _r.get("basis")
         _bs_short = html.escape(clip_note(str(_bs), 60)) if _bs not in (None, "") else '<span class="dim">未提供</span>'
         _bs_full = html.escape(str(_bs), quote=True) if _bs not in (None, "") else "未提供"
+        # CX 验收遗留4：金额/股数同口径推导（名义 5,000 元 ÷ 价、整手 100 股/手向下取整；非实际成交）
+        _p_new = _r.get("last_close") if _r.get("last_close") not in (None, "") else _r.get("paper_cost")
+        try:
+            _pn = float(_p_new)
+            _raw2 = int(5000 // _pn)
+            _sh2 = (_raw2 // 100) * 100
+            _amt2 = _sh2 * _pn
+            _sh_s = f'{_sh2} 股<div class="sub">5,000÷{_pn:g}≈{_raw2}→整手 {_sh2}</div>'
+            _amt_s = (f'{_amt2:,.0f} 元' if _sh2 else f'0 股顺延<div class="sub">一手 {_pn*100:,.0f} 元</div>')
+        except (TypeError, ValueError):
+            _sh_s = _ops_na("取不到（价缺）", "无现价/纸面价可推导")
+            _amt_s = _sh_s
         _act_rows += (
             f'<tr><td><b>{html.escape(_c)}</b> {html.escape(str(_r.get("name") or ""))}</td>'
             f'<td>{_kind}</td><td>{_cs_s}</td>'
             f'<td title="{_bs_full}"><span class="ops-quote">{_bs_short}</span></td>'
-            f'<td>{_ops_na("取不到（纸面未提供）", "纸面组合无成交金额字段")}</td>'
-            f'<td>{_ops_na("取不到（纸面未提供）", "纸面组合无成交股数/手数字段")}</td>'
+            f'<td>{_amt_s}</td><td>{_sh_s}</td>'
             f'<td>{_ops_na("取不到（纸面未提供）", "纸面组合无成交价字段，paper_cost 为纸面纳入价、非成交价")}</td></tr>')
     _act_over = (f'<span class="up">⚠ 今日动作 {_act_n} 条 &gt; 1，需人工核查</span>'
                  if _act_n > 1 else "")
@@ -2628,7 +2657,8 @@ def ops_html():
                      f' {_act_over}</div>'
                      '<table><tr><th>代码 · 名称</th><th>动作</th><th>共识组数</th>'
                      '<th title="建仓理由原文（悬停看全文）">理由（原文引用）</th>'
-                     '<th>金额</th><th>股数</th><th>成交价</th></tr>'
+                     '<th title="名义单席 5,000 元 ÷ 价，整手（100 股/手）向下取整；推导值非实际成交、不构成买卖指令">金额</th>'
+                     '<th title="同左">股数</th><th>成交价</th></tr>'
                      + _act_rows + '</table>')
     else:
         _act_html = '<div class="sub" style="margin:4px 0"><b>今日动作</b>：今日无动作</div>'
@@ -2672,7 +2702,7 @@ def ops_html():
              '<th title="按现价与止损参考价计算；无参考价显示 —">距止损</th>'
              '<th title="按止盈参考价与现价计算；无参考价显示 —">距止盈</th>'
              '<th title="自建仓以来的交易日数（建仓当日算 1）">持有天数</th>'
-             '<th title="来源组 · 共识票数">策略</th>'
+             '<th title="来源组 · 共识票数；下方小字为打法摘要（basis 首段派生、原文引用）">策略</th>'
              '<th title="所属行业">方向</th>'
              '<th title="建仓理由原文（悬停看全文）">建仓逻辑</th></tr>')
     _trs = ""
@@ -2714,14 +2744,24 @@ def ops_html():
                      f'累计 {html.escape(_cum_s)} ｜ 距止损 {_sl_s}</div>')
         else:
             _op_s = f'<b>{html.escape(_ops_tmr(_a5))}</b>'
-        # 软7 一手可行性：一手=price×100；>6000 不可买
+        # 软7 一手可行性：一手=price×100；名义 5,000 元推导、硬上限 6,000 元
         _p_lot = _lc if _lc not in (None, "") else _r.get("paper_cost")
         _lot_ok, _lot_amt = _ops_lot_ok(_p_lot)
-        _lot_note = ""
-        if not _lot_ok and _lot_amt is not None:
-            _lot_note = ('<div class="sub warn" title="一手=股价×100；单席上限 6,000 元">'
-                         f'股价较高，一手需 {_lot_amt:,.0f} 元，超过单席 6,000 元上限；'
-                         '实盘可顺延下一席</div>')
+        try:
+            _pl = float(_p_lot)
+            _raw_sh = int(5000 // _pl)            # 名义 5,000 元可买股数（向下取整）
+            _lot_sh = (_raw_sh // 100) * 100      # 整手（100 股/手）向下取整
+            _lot_val = _lot_sh * _pl
+            _unit = "份" if _is_etf else "股"
+            _der = f'一手闸：5,000÷{_pl:g}≈{_raw_sh}{_unit}→整手 {_lot_sh}{_unit}→{_lot_val:,.0f} 元'
+            if _lot_ok:
+                _lot_note = (f'<div class="sub dim" title="一手=价×100；名义单席 5,000 元、单席硬上限 6,000 元；推导值非实际成交">'
+                             f'{_der}；一手 {_lot_amt:,.0f}≤6,000 ✓</div>')
+            else:
+                _lot_note = (f'<div class="sub warn" title="一手=股价×100；名义单席 5,000 元、单席硬上限 6,000 元；推导值非实际成交">'
+                             f'{_der}；一手 {_lot_amt:,.0f}&gt;6,000 上限，实盘可顺延下一席</div>')
+        except (TypeError, ValueError):
+            _lot_note = '<div class="sub dim">一手闸：价取不到，推导跳过</div>'
         # 硬2 第9列仓位变动：1/cap 数值箭头 + 五态括注
         _wcell = f'{_pt_w_change(_r, _cap)}<div class="sub">（{html.escape(_ops_tmr(_a5))}）</div>'
         _trs += (f'<tr><td><b>{_i}</b></td>'
@@ -2736,7 +2776,7 @@ def ops_html():
                  f'<td>{_ops_dist(_lc, _r.get("stop_loss_anchor"), "sl")}</td>'
                  f'<td>{_ops_dist(_lc, _r.get("take_profit_anchor"), "tp")}</td>'
                  f'<td>{_pt_hold_cell(_days, _c)}</td>'
-                 f'<td>{_pt_strategy(_r)}</td>'
+                 f'<td>{_pt_strategy(_r)}{_ops_style(_r)}</td>'
                  f'<td>{_pt_industry(_r)}</td>'
                  + _ops_quote_cell(None if _is_etf else _r.get("basis"),
                                    "不适用（固定腿）" if _is_etf else "未提供")
@@ -2996,8 +3036,42 @@ for _g in GROUPS:
         except (ZeroDivisionError, TypeError, ValueError, IndexError):
             pass
     _CAL_G_DAY[_g] = _mm
-# HRS 本机复算 steady act_nav 0.875392→0.875392 = 0.000%，与 CX 函称 −2.440% 不符 → 取不到/待出处
-_HRS_LOCAL = (_CAL_G_DAY.get("HRS", {}).get(ASOF_TODAY) if ASOF_TODAY else None)
+
+# HRS 参照（ref_nav steady）逐日差分：CX 认错闭合（WB 本机复算 act=0.000% 正确，参照 −2.44% 为踏空口径）
+_HRS_REF_DAY = {}
+_HRS_REF_LAST = None
+_rs = REF_SERIES.get("HRS") or []
+for _i in range(1, len(_rs)):
+    try:
+        _HRS_REF_DAY[_rs[_i][0]] = _rs[_i][1] / _rs[_i - 1][1] - 1
+    except (ZeroDivisionError, TypeError, ValueError, IndexError):
+        pass
+if _rs:
+    _HRS_REF_LAST = _rs[-1][0]
+
+# CX 验收遗留2：日历「组合当日浮动」——与作战台同一派生口径（WB 2026-11-17 已复算 11-16 = +0.32%（4/6））
+# 分子：当日快照 rows 中「建仓日早于当日 且 非 ETF(510300) 且 增量件 pct_chg 有值」的个股涨跌幅之和（百分数单位原样累加）
+# 分母：固定 6 席（meta.cap=6）；ETF 与当日新进票计 0
+# ⛔ 量纲陷阱：pct_chg 是百分数单位（1.86 = +1.86%），和 ÷6 后直接 %.2f%% 显示，绝不能再 ×100（×100 会错成 +32.28%）
+_CAL_CAP = 6
+_CAL_FLOAT = {}
+for _dy in _OPD_DAYS:
+    _ds = str(_dy.get("date") or "")
+    _chg_d = _ops_pct_chg(_ds)
+    _num = 0.0
+    _cov = 0
+    for _x in (_dy.get("rows") or []):
+        if not isinstance(_x, dict):
+            continue
+        _c = str(_x.get("code") or "")
+        if not _c or _c == "510300":
+            continue
+        if str(_x.get("in_date") or "") == _ds:
+            continue
+        if _c in _chg_d:
+            _num += _chg_d[_c]
+            _cov += 1
+    _CAL_FLOAT[_ds] = {"pct": (_num / _CAL_CAP) if _cov else None, "cov": _cov}
 
 def _cal_median(xs):
     s = sorted(xs); n = len(s)
@@ -3106,31 +3180,39 @@ def _cal_month_html(y, m, build_day):
                 if idxp is not None:
                     inner += (f'<div class="dim calnote" title="沪深300 当日涨跌（index_hist.csv sh000300 收盘差分）">'
                               f'300 {idxp*100:+.2f}%</div>')
-                # CX P0 A类返工：组合盈亏取不到 / 五组色块按 act_nav 差分着色 / 动作数角标 / 当日下钻
-                inner += ('<div class="dim calnote" title="纸面口径无逐日组合净值序列；days[].rows.ret_since_in 统一截至 k_asof、不是逐日收盘，禁止拿个股收益冒充">'
-                          '—（纸面无逐日组合净值序列）</div>')
+                # CX 验收遗留2：组合当日浮动（与作战台同一派生口径）；取不到如实标注
+                _fl = _CAL_FLOAT.get(ds)
+                if _fl is not None and _fl["pct"] is not None:
+                    _flt_tip = (f'组合当日浮动（与作战台同一派生口径）：当日持仓（建仓日早于当日）中 '
+                                f'kline_incr_HRS_{ds}.csv 有官方涨跌幅的个股涨跌幅等权和 ÷ {_CAL_CAP} 席；'
+                                f'ETF 与当日新进票计 0；覆盖 {_fl["cov"]}/{_CAL_CAP}。')
+                    inner += (f'<div class="dim calnote" title="{html.escape(_flt_tip, quote=True)}">'
+                              f'组合 {_fl["pct"]:+.2f}%（{_fl["cov"]}/{_CAL_CAP}）</div>')
+                else:
+                    inner += ('<div class="dim calnote" title="当日无持仓快照，或 ETF 与当日新进票计 0 后无涨跌幅样本；'
+                              '不拿个股收益冒充。">—（组合当日浮动取不到）</div>')
                 _blocks, _bits = [], []
                 for _g in GROUPS:
-                    if _g == "HRS":
-                        _tip = ('5组 HRS 取不到：本机复算 0.000%，与 CX 报 −2.440% 不符，待 CX 报出处'
-                                '（steady act_nav 0.875392→0.875392）')
+                    _v = _CAL_G_DAY.get(_g, {}).get(ds)
+                    if _v is None:
+                        _tip = f'{GD[_g]} 当日 act_nav 差分取不到，不编造'
                         _bg = '#6e7681'
-                        _bits.append(f'{GD[_g]} 待出处')
                     else:
-                        _v = _CAL_G_DAY.get(_g, {}).get(ds)
-                        if _v is None:
-                            _tip = f'{GD[_g]} 当日 act_nav 差分取不到，不编造'
-                            _bg = '#6e7681'
-                        else:
-                            _tip = f'{GD[_g]} 当日 act_nav 逐日差分 {_v*100:+.2f}%'
-                            _bg = 'var(--up)' if _v > 0 else 'var(--dn)' if _v < 0 else '#6e7681'
-                            _bits.append(f'{GD[_g]} {_v*100:+.2f}%')
+                        _tip = f'{GD[_g]} 当日 act_nav 逐日差分 {_v*100:+.2f}%'
+                        _bg = 'var(--up)' if _v > 0 else 'var(--dn)' if _v < 0 else '#6e7681'
+                        _bits.append(f'{GD[_g]} {_v*100:+.2f}%')
                     _blocks.append(
                         f'<span title="{html.escape(_tip, quote=True)}" '
                         f'style="display:inline-block;width:9px;height:9px;background:{_bg};'
                         'border-radius:2px;margin-right:2px"></span>')
                 inner += ('<div class="calnote" style="margin-top:2px">' + "".join(_blocks)
                           + '<span class="dim">' + " ｜ ".join(_bits) + '</span></div>')
+                if ds == _HRS_REF_LAST:
+                    _rv = _HRS_REF_DAY.get(ds)
+                    if _rv is not None:
+                        inner += (f'<div class="dim calnote" title="5组 HRS 参照（ref_nav steady）当日差分 '
+                                  f'{_rv*100:+.2f}%；act_nav 当日 0.000%（未随参照行情变动）。">'
+                                  f'参照 {_rv*100:+.2f}%（空仓踏空）</div>')
                 _na = _CAL_ACT.get(ds)
                 if _na:
                     inner += (f'<div class="warn calnote" title="按每日状态变化与调出记录推导">'
@@ -3197,7 +3279,7 @@ body = f"""
 {_cal_month_html(2026, 11, _BUILD_DAY)}
 <div class="sub">有卡格可点击进入当日实盘卡详情；周末灰底；未来日期留空；10-23 卡仅表头无逐票行，如实标「无逐票数据」；{LATEST} 当日卡标「次日待收盘」（需 11-05 收盘后 kline 更新）。卡内战绩% = median(该卡买入档各票 TRACK ret)，红涨绿跌，title 内注明样本数。</div>
 <div class="sub">沪深300 当日涨跌来自 公共/数据/index_hist.csv（sh000300 收盘差分）；{LATEST} 的次日表现待 11-05 收盘后入库。</div>
-<div class="sub">五组口径不同，并列不排序、序列不可比；5组 HRS 取 steady 档（本机复算 0.000%，与 CX 报 −2.440% 不符，待出处）。</div>
+<div class="sub">五组口径不同，并列不排序、序列不可比；5组 HRS 取 steady 档（act_nav 本机复算 0.000%，未随参照行情变动；参照当日 −2.44% 为空仓踏空）。</div>
 <h2>当日持仓明细</h2>
 <div class="sub">点击月历中的日期可查看当日持仓明细；开=建仓参考价、收=最新价、盈亏=自建仓以来收益，今日操作按每日变化推导。</div>
 {_cal_drill}
