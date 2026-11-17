@@ -55,8 +55,20 @@ a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid va
 .curind summary{font-size:13.5px;color:var(--tx)}
 .usb td,.usb th{white-space:normal}
 @media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
+/* 2026-11-17 lead CDP 双视口截图修正：手机首屏收紧留白；理由列窄屏省略、title 保留全文 */
+@media(max-width:600px){.wrap{padding:8px 10px}.ops-quote{display:inline-block;max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.topnav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:12px;padding:8px 12px}
+.topnav a{white-space:nowrap;flex:0 0 auto}
+.card{padding:8px 10px!important}
+h1{font-size:19px;margin:2px 0 0}
+.wrap>.sub{font-size:11px;line-height:1.35;margin:0 0 6px}
+.card .sub{margin:0 0 4px!important}
+th,td{padding:4px 5px}
+table{margin-top:5px}
+details{padding:6px 10px;margin-top:6px}
+table:not(.caltbl) th:nth-child(2),table:not(.caltbl) td:nth-child(2){text-align:left}}
 </style></head><body>
-<nav class="topnav"><a href="../index.html">首页</a><a href="../live/index.html">实盘推荐</a><a href="../track/index.html">推荐跟踪</a><a href="../sim/index.html">模拟盘赛马</a><a href="../market/index.html">市场分析</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
+<nav class="topnav"><a href="../index.html">首页</a><a href="../ops/index.html">实盘作战台</a><a href="../sim/index.html">模拟盘赛马</a><a href="../market/index.html">市场分析</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
 <div class="wrap">
 
 <h1>策略档案</h1>
@@ -74,5 +86,5 @@ a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid va
 <p class="dim" style="font-size:12px;margin:4px 0 0">线索取自 5组 2026-10-26 上报件与 simulated_nav_HRS.csv tier 字段。</p></div></div>
 
 </div>
-<footer>页面构建时刻：2026-11-17 00:50（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+<footer>页面构建时刻：2026-11-17 14:00（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
 </body></html>
