@@ -1,0 +1,882 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="../auth.js"></script>
+<title>实盘详情 · 五组投资大看板</title>
+<style>
+body{background:#0d1117;color:#e6edf3;font-family:-apple-system,"PingFang SC",sans-serif;
+ max-width:1000px;margin:0 auto;padding:24px;line-height:1.6}
+h1{font-size:22px;margin:0 0 4px} .sub{color:#8b949e;font-size:13px;margin-bottom:20px}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi div{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px}
+.kpi label{display:block;color:#8b949e;font-size:12px} .kpi b{font-size:17px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:14px}
+.card.buy{border-left:4px solid #f85149} .card.watch{border-left:4px solid #d29922}
+.ch{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.code{font-weight:700;font-size:16px} .nm{color:#8b949e}
+.badge{background:#1f6feb;color:#fff;border-radius:10px;padding:2px 9px;font-size:12px}
+.tag{background:#30363d;border-radius:4px;padding:2px 8px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.grid div{background:#0d1117;border-radius:6px;padding:9px}
+.grid label{display:block;color:#8b949e;font-size:11px} .grid b{font-size:15px}
+.grid small{color:#6e7681;font-size:11px;display:block}
+.red{color:#f85149} .grn{color:#3fb950}
+.r1{color:#3fb950} .r2{color:#d29922} .r3{color:#f0883e} .r4{color:#f85149} .r5{color:#ff7b72}
+.meta{color:#8b949e;font-size:12px;margin-top:8px}
+.empty{background:#161b22;border:1px solid #d29922;border-radius:10px;padding:20px;color:#d29922}
+ul{margin:8px 0 0 18px;padding:0} li{font-size:13px;margin-bottom:4px}
+.warn{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;
+ color:#8b949e;font-size:12px;margin-top:20px}
+
+
+:root{--bg:#0b0e14;--panel:#12161f;--line:#232a36;--tx:#d7dee8;--dim:#8a93a3;--up:#e5544b;--dn:#3fb950;--acc:#58a6ff;--warn:#d29922}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",monospace}
+a{color:var(--acc);text-decoration:none} a:hover{text-decoration:underline}
+.topnav{display:flex;gap:18px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}
+.topnav a{color:var(--dim);font-size:13px} .topnav a.on{color:var(--tx);font-weight:700;border-bottom:2px solid var(--acc)}
+.wrap{max-width:1080px;margin:0 auto;padding:22px}
+h1{font-size:22px;margin:6px 0 2px} h2{font-size:16px;margin:26px 0 10px;border-left:3px solid var(--acc);padding-left:9px}
+.sub{color:var(--dim);font-size:12px}
+.grid{display:grid;gap:12px} .g5{grid-template-columns:repeat(5,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g6{grid-template-columns:repeat(3,1fr)} .gk{grid-template-columns:repeat(5,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.card b{font-size:19px} .card .lab{color:var(--dim);font-size:11px;display:block}
+.up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)} .warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:right;white-space:nowrap}
+th{background:#171c26;color:var(--dim);font-weight:600} th:first-child,td:first-child{text-align:left}
+.tag{display:inline-block;background:#1c2432;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-size:11px;color:var(--dim);margin:2px}
+.entry{display:block;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px;color:var(--tx)}
+.entry:hover{border-color:var(--acc);text-decoration:none}
+.bigbtn{display:inline-block;background:#1f3a5f;border:1px solid var(--acc);border-radius:8px;padding:10px 26px;color:#cfe4ff;font-size:15px;font-weight:700;margin-top:10px}
+.bigbtn:hover{background:#25477a;text-decoration:none}
+footer{color:#5c6575;font-size:11px;text-align:center;padding:22px;border-top:1px solid var(--line);margin-top:34px}
+.btns button{background:#171c26;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 14px;margin-right:8px;cursor:pointer;font-size:13px}
+.btns button.on{border-color:var(--acc);color:var(--acc)}
+.holdsec{display:none} .holdsec.on{display:block}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:12px;background:var(--panel)}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}
+.compass{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.cbarwrap{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.cseg{display:flex;align-items:center;justify-content:center;color:#d7dee8;font-size:12px;min-width:0}
+.cln{margin:8px 0 4px;font-size:13px}
+.grow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed #1c2330;font-size:12.5px}
+.gbadge{display:inline-block;background:#1f2937;border:1px solid var(--line);border-radius:5px;padding:1px 8px;font-weight:700;min-width:34px;text-align:center}
+.stag{font-weight:700;min-width:52px}
+.cbar{display:inline-block;width:80px;height:7px;background:#0d1117;border:1px solid var(--line);border-radius:4px;overflow:hidden;vertical-align:middle}
+.cbar i{display:block;height:100%;background:var(--acc)}
+.gbasis{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.status i{font-style:normal;margin:0 2px}
+.riskfoot{margin-top:22px;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;color:var(--dim);font-size:12px}
+.g7{grid-template-columns:repeat(7,1fr)}
+.caltbl{table-layout:fixed}
+.caltbl th,.caltbl td{text-align:center;white-space:normal;padding:6px 3px}
+.caltbl td{vertical-align:top;height:104px}
+.calwe{background:#0e1219}
+.calday{font-weight:700;font-size:13px}
+.calnote{font-size:11px;line-height:1.45}
+a.calcell-link{color:inherit;display:block;height:100%}
+a.calcell-link:hover{text-decoration:none;border-radius:6px;outline:1px solid var(--acc)}
+.curind{margin-top:8px}
+.curind summary{font-size:13.5px;color:var(--tx)}
+.usb td,.usb th{white-space:normal}
+@media(max-width:900px){.g5,.g3,.g6,.gk{grid-template-columns:repeat(2,1fr)}}
+/* 2026-11-17 lead CDP 双视口截图修正：手机首屏收紧留白；理由列窄屏省略、title 保留全文 */
+@media(max-width:600px){.wrap{padding:8px 10px}.ops-quote{display:inline-block;max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.topnav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:12px;padding:8px 12px}
+.topnav a{white-space:nowrap;flex:0 0 auto}
+.card{padding:8px 10px!important}
+h1{font-size:19px;margin:2px 0 0}
+.wrap>.sub{font-size:11px;line-height:1.35;margin:0 0 6px}
+.card .sub{margin:0 0 4px!important}
+th,td{padding:4px 5px}
+table{margin-top:5px}
+details{padding:6px 10px;margin-top:6px}
+table:not(.caltbl) th:nth-child(2),table:not(.caltbl) td:nth-child(2){text-align:left}}
+</style></head><body>
+<nav class="topnav"><a href="../index.html">首页</a><a href="../ops/index.html">实盘作战台</a><a href="../sim/index.html">模拟盘赛马</a><a href="../market/index.html">市场分析</a><a href="../strategies/index.html">策略档案</a><a href="../data-status/index.html">数据状态</a></nav>
+<div class="wrap">
+
+<h1>每日实盘推荐卡 · 2026-11-18</h1>
+<div class="sub">生成 2026-11-18T19:30:01 ｜ 来源：投资1组_WB/实盘化方案/daily_live_cards/daily_live_card_2026-11-18.{csv,txt,html} ｜ <a href="index.html">← 返回实盘列表</a></div>
+<div class="grid gk" style="margin-top:12px">
+  <div><label>✅ 共识买入（≥2 组）</label><b>8</b><small>本卡唯一推荐口径</small></div>
+  <div><label>👁 观察池</label><b>22</b><small>非推荐，仅跟踪</small></div>
+  <div><label>📥 参与组</label><b>4/5</b><small>2组、5组、3组、1组 ｜ 缺失 4组</small></div>
+  <div><label>🧭 当日风向</label><b style="font-size:14px">3 看空<br>1 中性<br>0 看多</b><small>按各组上报件实况统计</small></div>
+  <div><label>风险等级</label><b style="font-size:14px">R3 · 中等风险·市场偏空需谨慎</b><small>卡面自述</small></div>
+</div>
+
+<h2 id="compass">实盘风向标</h2>
+
+<div class="compass">
+  <div class="cbarwrap"><div class="cseg" style="width:20%;background:#6e7681" title="中性 1 组">1</div><div class="cseg" style="width:60%;background:var(--dn)" title="看空 3 组">3</div><div class="cseg" style="width:20%;background:repeating-linear-gradient(45deg,#21262d,#21262d 4px,#161b22 4px,#161b22 8px)" title="未上报 1 组">1</div></div>
+  <div class="cln"><span class="dim">中性 1 组</span> · <span class="dn">看空 3 组</span> · <span class="warn">未上报 1 组</span></div>
+  <div class="grow"><span class="gbadge">1组</span>
+<span class="stag dn">看空</span>
+<span class="cbar"><i style="width:60%"></i></span><span class="dim">0.60</span><span class="tag" title="判据埋在自然语言 basis 里，看板无法自动复算">凭经验判断</span><span class="tag" title="风向预测回算（口径预注册，禁事后改）：真值 sh000300 收盘；看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime 2026-11-18 18:46；5日（正式口径）：5日 7/11=63.6%；次日（参考口径）：次日 6/14=42.9%；超额命中率（v2 增强：方向命中率 − 常量同向基线，恒定 stance 组恒 0）：次日超额0.0pp / 5日超额0.0pp">🎯 近11次看对7次</span><span class="dim" style="font-size:11px">数据截止：未说明｜当日数据</span><span class="gbasis">市场广度：站上MA20 15.4% / 当日上涨占比 24.6%（样本 5161 只）</span></div><div class="grow"><span class="gbadge">2组</span>
+<span class="stag dim">中性</span>
+<span class="cbar"><i style="width:55%"></i></span><span class="dim">0.55</span><span class="tag" title="判据埋在自然语言 basis 里，看板无法自动复算">凭经验判断</span><span class="tag" title="风向预测回算（口径预注册，禁事后改）：真值 sh000300 收盘；看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime 2026-11-18 18:46；5日（正式口径）：5日中性合格 19/19；次日（参考口径）：次日中性合格 16/23">🎯 中性判断 合格19/19</span><span class="dim" style="font-size:11px">数据截止：未说明｜当日数据</span><span class="gbasis">派生规则：E≥0.9→偏多0.60；0.45≤E&lt;0.9→中性0.55；E&lt;0.45→谨慎0.55；</span></div><div class="grow"><span class="gbadge">3组</span>
+<span class="stag dn">看空</span>
+<span class="cbar"><i style="width:35%"></i></span><span class="dim">0.35</span><span class="tag" title="件内含结构化判据 rule，可复算">可复算判据</span><span class="tag" title="风向预测回算（口径预注册，禁事后改）：真值 sh000300 收盘；看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime 2026-11-18 18:46；5日（正式口径）：5日 3/9=33.3%；次日（参考口径）：次日 4/13=30.8%；超额命中率（v2 增强：方向命中率 − 常量同向基线，恒定 stance 组恒 0）：次日超额-15.4pp / 5日超额-33.3pp；⚠数据陈旧：basis 解析数据日 2026-10-14 早于预测日 3 个自然日以上">🎯 近9次看对3次</span><span class="tag" style="color:var(--warn);border-color:var(--warn)" title="数据日检查（v2 增强）：basis 解析数据日 2026-10-14 早于预测日 3 个自然日以上">数据偏旧</span><span class="dim" style="font-size:11px">数据截止：2026-11-18｜当日数据</span><span class="gbasis">QD-B1 机械判据（本轮由 HRS 日增量件 20 份当场重算，载体集 sha16=b37a0b78112cf09f，…</span></div><div class="grow"><span class="gbadge">4组</span>
+<span class="stag warn">未上报</span>
+<span class="dim">—</span><span class="tag" title="风向预测回算（口径预注册，禁事后改）：真值 sh000300 收盘；看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime 2026-11-18 18:46；5日（正式口径）：5日 3/8=37.5%；次日（参考口径）：次日 5/11=45.5%；超额命中率（v2 增强：方向命中率 − 常量同向基线，恒定 stance 组恒 0）：次日超额0.0pp / 5日超额0.0pp">🎯 近8次看对3次</span><span class="dim" style="font-size:11px">数据截止：未说明</span><span class="gbasis">当日上报件不存在（daily_report_DSK_2026-11-18.json 缺件）</span></div><div class="grow"><span class="gbadge">5组</span>
+<span class="stag dn">看空</span>
+<span class="cbar"><i style="width:80%"></i></span><span class="dim">0.80</span><span class="tag" title="判据埋在自然语言 basis 里，看板无法自动复算">凭经验判断</span><span class="tag" title="风向预测回算（口径预注册，禁事后改）：真值 sh000300 收盘；看多命中=r&gt;0、看空命中=r&lt;0；5日=正式口径(对齐「未来1周」声明)，次日=参考；中性不计方向，按|r|≤带宽(次日±1%/5日±3%)报合格率。样本极小(≤13天)仅供过程记录，非优劣结论。分数件 mtime 2026-11-18 18:46；5日（正式口径）：5日 13/19=68.4%；次日（参考口径）：次日 12/22=54.5%；超额命中率（v2 增强：方向命中率 − 常量同向基线，恒定 stance 组恒 0）：次日超额0.0pp / 5日超额0.0pp">🎯 近19次看对13次</span><span class="dim" style="font-size:11px">数据截止：未说明｜当日数据</span><span class="gbasis">20日中位收益 -9.64%(n=2000)，站上MA20 15%；阈值±3% 机械判定</span></div>
+  <div class="sub" style="margin-top:6px">红=看多、绿=看空、灰=中性；「看对X次」是该组近5日大盘方向判断的回算战绩（样本极小，仅过程记录）；各组选股范围不同，不可横向比大小。</div>
+  <details><summary>ⓘ 技术口径说明（点开查看）</summary><div class="sub">口径：无观点 = 该组上报件 confidence=0 且自述无择时模型（5组 2026-10-28 确认为诚实占位）；未上报 = 当日上报件缺件（出件失败≠无观点，两格分开，不把故障读成态度）。以下为各组当前看法（描述），非收益预测；各组样本池/阈值/confidence 定义不同，不可直接横向比大小。「有结构化判据/仅文字 basis」为可比性标记。读数日＝判据数据实际截止日，报告日≠读数日；「当日生成/事后补跑」由件内 generated_at 与 date 比对得出，事后补跑件 PIT 完整性可能存疑。各组 stance 历史命中率已由打分器接入（2026-11-04 起：score_market_view_WB.py 每日 18:40 回算 → market_view_score_WB.csv → 本页 🎯 徽章；口径预注册——真值 sh000300 收盘、5日=正式口径对齐「未来1周」声明、次日=参考、中性不计方向按带宽报合格率；样本极小仅供过程记录，非优劣结论）。3组 2026-10-26 及更早旧件为旧口径（stance 为脚本字面量、无结构化判据），已逐格如实标注。</div></details>
+  <div class="sub" style="margin-top:4px">历史件口径说明：历史件的口径文本为当时原样，未回改；个别旧卡因 60 字截断留下的半句属 PIT 证据，不补全、不伪造。2026-11-04 起渲染侧改为按句读点截断，仅作用于新生成的页面。</div>
+</div>
+
+<h2>本日执行卡（精简视图 · 2~3 只股票 + 1 只 ETF）</h2>
+<table><tr><th>标的</th><th>触发价（口径）</th><th>止损触发线</th><th>止盈锚</th><th>共识票数</th><th>实际执行价</th></tr><tr><td><b>510300</b> 沪深300ETF <span class="tag">ETF 固定腿</span></td><td>4.083 <span class="dim">(bfq)</span></td><td>—</td><td>—</td><td>N/A</td><td>取不到（意向非成交，无实际执行）</td></tr><tr><td><b>sh601225</b> 陕西煤业 <span class="tag">股票</span></td><td>27.790 <span class="dim">(qfq)</span></td><td>25.010</td><td>33.350</td><td>2</td><td>取不到（意向非成交，无实际执行）</td></tr><tr><td><b>sz002563</b> 森马服饰 <span class="tag">股票</span></td><td>6.130 <span class="dim">(qfq)</span></td><td>5.520</td><td>7.360</td><td>2</td><td>取不到（意向非成交，无实际执行）</td></tr><tr><td><b>sz300324</b> 旋极信息 <span class="tag">股票</span></td><td>4.440 <span class="dim">(裸价)</span></td><td>3.996</td><td>5.106</td><td>2</td><td>取不到（意向非成交，无实际执行）</td></tr></table><div class="sub" style="margin-top:6px">共 4 行 = 固定腿 ETF 1 只 + 精选股票 3 只（同行业限 1 只，按共识票数→当日打分排序）；意向非成交，不改动任何模拟盘持仓。实际执行价列当前无成交来源，一律标「取不到」，⛔ 不以触发价/止损触发线回填。全量卡约 30~40 行，已降级为下方折叠备查。</div>
+
+<details><summary>全量备查 · 共识买入表（行业共识 ≥2 组 · 意向非成交 · 8 只）</summary>
+<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损触发线</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sz300324</td><td>旋极信息</td>
+<td>买入</td><td><span class="gbadge">1组</span> <span class='dim'>共识 2/5</span></td>
+<td>计算机</td><td>4.440 <span class="dim">(裸价)</span></td>
+<td>3.996</td><td>5.106</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sz002042</td><td>华孚时尚</td>
+<td>买入</td><td><span class="gbadge">1组</span> <span class='dim'>共识 2/5</span></td>
+<td>纺织服饰</td><td>3.960 <span class="dim">(裸价)</span></td>
+<td>3.564</td><td>4.554</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sz002261</td><td>拓维信息</td>
+<td>买入</td><td><span class="gbadge">1组</span> <span class='dim'>共识 2/5</span></td>
+<td>计算机</td><td>24.600 <span class="dim">(裸价)</span></td>
+<td>22.140</td><td>28.290</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sh601225</td><td>陕西煤业</td>
+<td>买入</td><td><span class="gbadge">2组</span> <span class='dim'>共识 2/5</span></td>
+<td>煤炭</td><td>27.790 <span class="dim">(qfq)</span></td>
+<td>25.010</td><td>33.350</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sz002563</td><td>森马服饰</td>
+<td>买入</td><td><span class="gbadge">2组</span> <span class='dim'>共识 2/5</span></td>
+<td>纺织服饰</td><td>6.130 <span class="dim">(qfq)</span></td>
+<td>5.520</td><td>7.360</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sh600177</td><td>雅戈尔</td>
+<td>买入</td><td><span class="gbadge">2组</span> <span class='dim'>共识 2/5</span></td>
+<td>纺织服饰</td><td>8.780 <span class="dim">(qfq)</span></td>
+<td>7.900</td><td>10.540</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sz002128</td><td>电投能源</td>
+<td>买入</td><td><span class="gbadge">5组</span> <span class='dim'>共识 2/5</span></td>
+<td>煤炭</td><td>27.900 <span class="dim">(qfq)</span></td>
+<td>26.220</td><td>30.420</td>
+<td>4%（模拟盘等权）</td></tr><tr><td>sh600570</td><td>恒生电子</td>
+<td>买入</td><td><span class="gbadge">5组</span> <span class='dim'>共识 2/5</span></td>
+<td>计算机</td><td>20.520 <span class="dim">(qfq)</span></td>
+<td>19.190</td><td>22.520</td>
+<td>4%（模拟盘等权）</td></tr></table>
+<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>
+<div class="sub">仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。</div>
+</details>
+
+<details><summary>全量备查 · 观察票表（未达共识门槛 · 非推荐 · 22 只）</summary>
+<table><tr><th>代码</th><th>名称</th><th>档位</th><th>来源组</th><th>行业</th><th>触发价</th><th>止损触发线</th><th>止盈</th><th>仓位提示</th></tr><tr><td>sh600467</td><td>好当家</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>农林牧渔</td><td>2.770 <span class="dim">(裸价)</span></td>
+<td>2.493</td><td>3.186</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600619</td><td>海立股份</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>家用电器</td><td>13.700 <span class="dim">(裸价)</span></td>
+<td>12.330</td><td>15.755</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600690</td><td>海尔智家</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>家用电器</td><td>22.600 <span class="dim">(裸价)</span></td>
+<td>20.340</td><td>25.990</td>
+<td>0%（观察仓）</td></tr><tr><td>sh688347</td><td>华虹宏力</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>电子</td><td>184.970 <span class="dim">(裸价)</span></td>
+<td>166.473</td><td>212.716</td>
+<td>0%（观察仓）</td></tr><tr><td>sz000062</td><td>深圳华强</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>电子</td><td>21.970 <span class="dim">(裸价)</span></td>
+<td>19.773</td><td>25.265</td>
+<td>0%（观察仓）</td></tr><tr><td>sz002226</td><td>江南化工</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>基础化工</td><td>5.440 <span class="dim">(裸价)</span></td>
+<td>4.896</td><td>6.256</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600895</td><td>张江高科</td>
+<td>观察</td><td><span class="gbadge">1组</span> <span class='dim'>共识 1/5</span></td>
+<td>房地产</td><td>26.650 <span class="dim">(裸价)</span></td>
+<td>23.985</td><td>30.648</td>
+<td>0%（观察仓）</td></tr><tr><td>sh601018</td><td>宁波港</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>交通运输</td><td>3.660 <span class="dim">(qfq)</span></td>
+<td>3.290</td><td>4.390</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600900</td><td>长江电力</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>公用事业</td><td>30.680 <span class="dim">(qfq)</span></td>
+<td>27.610</td><td>36.820</td>
+<td>0%（观察仓）</td></tr><tr><td>sz001286</td><td>陕西能源</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>公用事业</td><td>10.270 <span class="dim">(qfq)</span></td>
+<td>9.240</td><td>12.320</td>
+<td>0%（观察仓）</td></tr><tr><td>sh603345</td><td>安井食品</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>食品饮料</td><td>92.300 <span class="dim">(qfq)</span></td>
+<td>83.070</td><td>110.760</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600993</td><td>马应龙</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>医药生物</td><td>25.970 <span class="dim">(qfq)</span></td>
+<td>23.370</td><td>31.160</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600035</td><td>楚天高速</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>交通运输</td><td>3.830 <span class="dim">(qfq)</span></td>
+<td>3.450</td><td>4.600</td>
+<td>0%（观察仓）</td></tr><tr><td>sz301109</td><td>军信股份</td>
+<td>观察</td><td><span class="gbadge">2组</span> <span class='dim'>共识 1/5</span></td>
+<td>环保</td><td>15.260 <span class="dim">(qfq)</span></td>
+<td>13.730</td><td>18.310</td>
+<td>0%（观察仓）</td></tr><tr><td>sh603861</td><td>白云电器</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>电力设备</td><td>10.060 <span class="dim">(qfq)</span></td>
+<td>8.880</td><td>11.830</td>
+<td>0%（观察仓）</td></tr><tr><td>sh688819</td><td>天能股份</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>电力设备</td><td>18.350 <span class="dim">(qfq)</span></td>
+<td>17.250</td><td>20.010</td>
+<td>0%（观察仓）</td></tr><tr><td>sh601878</td><td>浙商证券</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>非银金融</td><td>8.600 <span class="dim">(qfq)</span></td>
+<td>8.310</td><td>9.030</td>
+<td>0%（观察仓）</td></tr><tr><td>sh600061</td><td>国投资本</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>非银金融</td><td>6.030 <span class="dim">(qfq)</span></td>
+<td>5.800</td><td>6.370</td>
+<td>0%（观察仓）</td></tr><tr><td>sh601881</td><td>中国银河</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>非银金融</td><td>11.410 <span class="dim">(qfq)</span></td>
+<td>10.950</td><td>12.110</td>
+<td>0%（观察仓）</td></tr><tr><td>sh601788</td><td>光大证券</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>非银金融</td><td>13.350 <span class="dim">(qfq)</span></td>
+<td>12.860</td><td>14.080</td>
+<td>0%（观察仓）</td></tr><tr><td>sz002270</td><td>华明装备</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>电力设备</td><td>18.910 <span class="dim">(qfq)</span></td>
+<td>17.430</td><td>21.130</td>
+<td>0%（观察仓）</td></tr><tr><td>sh601211</td><td>国泰海通</td>
+<td>观察</td><td><span class="gbadge">5组</span> <span class='dim'>共识 1/5</span></td>
+<td>非银金融</td><td>16.290 <span class="dim">(qfq)</span></td>
+<td>15.500</td><td>17.470</td>
+<td>0%（观察仓）</td></tr></table>
+<div class="sub">行业列取自当日各组上报件的 industry 字段；卡 csv 无行业列，查不到的如实标「未上报」。触发价口径以卡面「价格口径」列逐票标注为准（如 hfq=后复权价）；2026-10-29 起卡面价格修复为裸价/实际价口径，此前旧卡或为后复权价，不可与市价直接比较。</div>
+<div class="sub">仓位提示口径：模拟盘统一口径 v2（虚拟本金 100 万 / TopN25 等权 = 每票 4%）；用户真实账户资金分配待用户裁决，此处仓位提示不代表真实账户建议。</div>
+</details>
+<h2>ETF 固定腿（非共识非推荐，每日无条件展示）</h2><table><tr><th>代码</th><th>名称</th><th>触发价</th><th>仓位提示</th></tr><tr><td>510300</td><td>沪深300ETF</td><td>4.083 <span class="dim">(bfq)</span></td><td>固定腿（非共识非推荐），模拟盘 ETF 腿仓位待引擎扩池</td></tr></table>
+
+<details><summary>展开原文：五组 market_view 全文与卡面说明（含卡片完整原文）</summary>
+<div class="grow"><span class="gbadge">1组</span><span class="gbasis" style="white-space:normal">市场广度：站上MA20 15.4% / 当日上涨占比 24.6%（样本 5161 只）<br><span class="dim" style="white-space:normal">报告日 2026-11-18｜数据截止：未说明｜当日数据</span></span></div><div class="grow"><span class="gbadge">2组</span><span class="gbasis" style="white-space:normal">派生规则：E≥0.9→偏多0.60；0.45≤E&lt;0.9→中性0.55；E&lt;0.45→谨慎0.55；regime缺失→中性0.50。本日输入 E=0.5、regime=震荡市、risk=71.25（后两项为调仓执行日锁定值）、样本 4992 只<br><span class="dim" style="white-space:normal">报告日 2026-11-18｜数据截止：未说明｜当日数据</span></span></div><div class="grow"><span class="gbadge">3组</span><span class="gbasis" style="white-space:normal">QD-B1 机械判据（本轮由 HRS 日增量件 20 份当场重算，载体集 sha16=b37a0b78112cf09f，非自述、非上一轮继承）：站上 MA20 14.84%（812/5470 只，除权安全口径＝以当日 close 为锚按该件 pct_chg 逐日回推前 19 收盘）｜当日上涨占比 23.89%（1307 只，跌 4043、平 120）｜20 日中位收益 -7.28%。S=0.5·宽度+0.5·当日涨跌占比=19.36（百分数，与上面两个读数同单位）∣阈值 S≤40 看空／S≥60 看多／其余中性∣置信=min(0.35, 0.35·min(1,|S−50|/10))=0.35。置信上限 0.35 的出处＝本组 2026-10-14 闸门重估：这类状态读数 2021 后配对超额 −1.9646pp、t=−3.305 ⇒ 本组不承认它有择时超额，nav 用冻结仓位、不随本读数调仓。误差范围（同一条链的分辨力）：改用裸 close 算 MA20 得 14.83%（差 -0.01pp）；窗口内 0 天（无）早于 2026-10-08（HRS 增量件 pct_chg 官方化起点）⇒ 那几天的除权事件本判据结构上看不见。本窗在已官方化那段里检测到除权/分红痕迹 134 个（判据＝|pct_chg−裸价比|&gt;5bp，按「代码×日」计数）；两者差值只有 -0.01pp ⇒ 除权安全口径与裸口径在本窗结论一致，这条读数不是靠口径挑出来的。稳健性：S 距最近阈值 20.64 个百分点；窗口多取 1 天（20→21 天）S 从 19.36 到 19.39，stance 仍 看空。<br><span class="dim" style="white-space:normal">报告日 2026-11-18｜数据截止：2026-11-18｜当日数据</span><br><span class="dim" style="white-space:normal">结构化判据（rule，可复算）：{&quot;id&quot;: &quot;QD-B1&quot;, &quot;S&quot;: 19.365, &quot;thresholds&quot;: {&quot;bear_lte&quot;: 40.0, &quot;bull_gte&quot;: 60.0, &quot;conf_full_at&quot;: 10.0}, &quot;conf_cap&quot;: 0.35, &quot;counts&quot;: {&quot;ma20_n&quot;: 812, &quot;ma20_ratio_pct&quot;: 14.84, &quot;up_n&quot;: 1307, &quot;up_ratio_today_pct&quot;: 23.89, &quot;down_n&quot;: 4043, &quot;flat_n&quot;: 120, &quot;n_sample&quot;: 5470}, &quot;carrier_set_sha16&quot;: &quot;b37a0b78112cf09f&quot;, &quot;window&quot;: {&quot;n_days&quot;: 20, &quot;first&quot;: &quot;2026-10-22&quot;, &quot;last&quot;: &quot;2026-11-18&quot;}, &quot;dist_to_threshold_pp&quot;: 20.64, &quot;sensitivity&quot;: {&quot;S&quot;: 19.39, &quot;stance&quot;: &quot;看空&quot;, &quot;confidence&quot;: 0.35, &quot;window&quot;: {&quot;n_days&quot;: 21, &quot;first&quot;: &quot;2026-10-21&quot;, &quot;last&quot;: &quot;2026-11-18&quot;, &quot;n_used&quot;: 5469}}, &quot;universe&quot;: {&quot;n_on_last_day&quot;: 5482, &quot;n_used&quot;: 5470, &quot;n_excluded_incomplete_window&quot;: 12, &quot;n_st&quot;: 200, &quot;n_bj&quot;: 308, &quot;note&quot;: &quot;样本＝当日增量件全部行（不剔 ST/北交，看板要全市场宽度）；剔了谁另报，不静默&quot;}, &quot;naive_close_variant_pct&quot;: 14.83, &quot;exrights_days_detected&quot;: 134, &quot;blind_days&quot;: [], &quot;recompute&quot;: &quot;python3 风向判据_QD_B1.py 同目录直接跑即复现本读数（一份代码，日更件与实测件共用）&quot;}</span></span></div><div class="grow"><span class="gbadge">4组</span><span class="gbasis" style="white-space:normal">当日上报件不存在（daily_report_DSK_2026-11-18.json 缺件）<br><span class="dim" style="white-space:normal">报告日 2026-11-18｜数据截止：未说明</span></span></div><div class="grow"><span class="gbadge">5组</span><span class="gbasis" style="white-space:normal">20日中位收益 -9.64%(n=2000)，站上MA20 15%；阈值±3% 机械判定<br><span class="dim" style="white-space:normal">报告日 2026-11-18｜数据截止：未说明｜当日数据</span></span></div>
+<hr style="border:0;border-top:1px dashed #1c2330">
+<pre style="white-space:pre-wrap;color:var(--dim);font-size:12px"># 每日实盘推荐卡（2026-11-18）· 生成 2026-11-18T19:30:01
+# 账户总额 30000 元 | 计划投入合计 0.00 | 组合最大亏损 0.00（0.00%）
+# 今日信号来源：2组、5组、3组、1组 / 缺失：4组
+# 📌 固定腿：510300 沪深300ETF（来源组 1组·非共识非推荐·每日无条件展示）｜ETF 独立档 0 只
+# 成本口径：实盘 25.2bp（5、000/席，万2.5含规费+最低5元下限）＋卖出印花税0.05%（ETF无印花税）
+# 单席资金口径待用户指示；单席&lt;4、000 时最低5元触发、须上调成本假设（25.2bp 是 5、000/席下的假设，低于此不成立）；模拟盘 30bp 假设不动
+# 仓位闸门：2组 QF-1.2（1组 的 C8 为空壳，不参与）
+# ⚠️ 本卡由 AI 生成，非投资建议；是否录入由用户自行决定
+# ✅ 达行业共识的买入推荐：8 只（需 ≥2 组选中同行业，2026-10-27 起本卡唯一『推荐』口径）
+# 👁 观察池：22 只（未达行业共识门槛，**不是推荐**，仅作跟踪候选）
+# 📥 各组提交候选票合计 30 条 → 去重后 30 只 ｜ 现有持仓展示 55 只（来源=picks，非推荐，不计共识票）
+# ── 市场研判（汇总 4 组 market_view，原样罗列不平均）──
+# 看多 0 组 / 看空 3 组 / 中性 1 组 / 未知 0 组
+#   · 1组: 看空｜置信度=0.6｜is_human=False
+#   · 2组: 中性｜置信度=0.55｜is_human=False（含 2组 QF-1.2 regime 闸门信号）
+#   · 3组: 看空｜置信度=0.35｜is_human=False
+#   · 5组: 看空｜置信度=0.8｜is_human=False
+# 热点板块（共识票行业分布 Top5）：非银金融(5)、计算机(3)、纺织服饰(3)、电力设备(3)、家用电器(2)
+# 风险等级：R3 · 中等风险·市场偏空需谨慎
+# 仓位建议：本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 2组 QF-1.2 闸门提供
+# ⚠️ 诚实护栏：本卡所有信号均为 AI 推导『意向』，未产生任何真实成交；不写成交价、不只报喜、不包装成已建仓。
+# 执行口径：条件单到价仅推提醒，成交需用户手动确认；止损方向市价；跳空/跌停条件单可能不成交，由用户人工处理。
+# ── 逐票 data_gaps（止损有效性；仅透出上报件真实标注，不默认有止损）──
+#   （本次上报件未标注逐票「无有效止损（14天到期未续）」，不默认任何票有/无有效止损）
+# new_picks 覆盖：4/5 组已提供字段（其中 3 组当日有新增推荐、1 组当日新增 0 只）
+# ⚠️ 1 组未上报（无件）：4组</pre>
+<div>
+<h1>每日实盘推荐卡 · 2026-11-18</h1>
+<div class="sub">生成 2026-11-18T19:30:01 ｜ 账户 30000 元 ｜ 成本口径：实盘 25.2bp（含最低5元下限） ｜ 仓位闸门：2组 QF-1.2 ｜ ⚠️ 全部为 AI 意向，未成交</div>
+<div class="kpi">
+ <div><label>信号来源组</label><b>4/5</b></div>
+ <div><label>缺失组</label><b>4组</b></div>
+ <div><label>✅ 买入推荐（行业共识≥2组）</label><b>8</b><small>本卡唯一推荐口径</small></div>
+ <div><label>👁 观察池（未达行业共识）</label><b>22</b><small>非推荐，仅跟踪</small></div>
+</div>
+<div class="kpi">
+ <div><label>📥 各组提交候选票</label><b>30 条</b><small>去重后 30 只；不等于推荐数</small></div>
+ <div><label>现有持仓展示（来源=picks）</label><b>55 只</b><small>非推荐，不计共识票</small></div>
+ <div><label>已提供 new_picks 字段</label><b>4/5</b></div>
+ <div><label>未提供 new_picks 字段</label><b>0</b>
+   <small>无</small></div>
+</div>
+<div class="kpi">
+ <div><label>风险等级</label><b class="r3">R3</b><small>中等风险·市场偏空需谨慎</small></div>
+ <div><label>市场研判</label><b>0多/3空/1中</b><small>原样汇总 4 组</small></div>
+ <div><label>热点板块</label><b>非银金融、计算机、纺织服饰</b><small>共识票行业分布</small></div>
+ <div><label>仓位建议</label><b>不预设金额</b><small>档位随共识；上限归 2组 QF-1.2</small></div>
+</div>
+<div class="warn" style="margin-top:0">
+<b>市场研判（汇总 4 组 market_view，原样罗列不平均）：</b><br>
+看多 0 组 ／ 看空 3 组 ／ 中性 1 组 ／ 未知 0 组<br>
+1组: 看空｜置信度=0.6｜is_human=False<br>2组: 中性｜置信度=0.55｜is_human=False（含 2组 QF-1.2 regime 闸门信号）<br>3组: 看空｜置信度=0.35｜is_human=False<br>5组: 看空｜置信度=0.8｜is_human=False<br>
+<b>热点板块（共识票行业分布 Top5）：</b>非银金融(5)、计算机(3)、纺织服饰(3)、电力设备(3)、家用电器(2)<br>
+<b>风险等级：R3 · 中等风险·市场偏空需谨慎</b>（R1低→R5高，定性不定量）<br>
+<b>仓位建议：</b>本卡不预设资金数字；档位随共识强度（满档/半档/观察），以用户当前指示为准；实盘上限由 2组 QF-1.2 闸门提供。<br>
+
+</div>
+<div class="warn" style="margin-top:0">
+<b>票源口径（2026-10-25 起）：</b>跨组共识票<b>只从 <code>new_picks</code> 取</b>；
+<code>picks</code>/<code>holdings</code> 是现有持仓展示，<b>不是推荐</b>，不参与计票。<br>
+
+new_picks 覆盖：4/5 组已提供字段（其中 3 组当日有新增推荐、1 组当日新增 0 只）<br>⚠️ 1 组未上报（无件）：4组
+</div>
+
+  <div class="card hold">
+    <div class="ch"><span class="code">510300</span>
+      <span class="nm">沪深300ETF</span>
+      <span class="badge">共识 N/A/5</span>
+      <span class="tag">固定腿（非共识非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>4.083</b><small>bfq</small></div>
+      <div><label>止损触发线</label><b class="grn">—</b></div>
+      <div><label>止盈价</label><b class="red">—</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：ETF豁免（无除权除息跳变风险口径，分红不影响 bfq 展示）</div>
+    <div class="meta">依据：A-1固定腿：510300 沪深300ETF 每日无条件展示（非共识非推荐）；价格源 kline_etf_510300_WB.csv(bfq, 2026-11-13 收盘)；is_human=True，as_of 当日无 bar，取 ≤as_of 最近一行</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sz300324</span>
+      <span class="nm">旋极信息</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>4.440</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">3.996</b></div>
+      <div><label>止盈价</label><b class="red">5.106</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz300324(300324) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 19.68%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sz002042</span>
+      <span class="nm">华孚时尚</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>3.960</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">3.564</b></div>
+      <div><label>止盈价</label><b class="red">4.554</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz002042(002042) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 16.13%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sz002261</span>
+      <span class="nm">拓维信息</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>24.600</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">22.140</b></div>
+      <div><label>止盈价</label><b class="red">28.290</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz002261(002261) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 11.41%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sh601225</span>
+      <span class="nm">陕西煤业</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>27.790</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">25.010</b></div>
+      <div><label>止盈价</label><b class="red">33.350</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh601225(601225) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 90.4（100.0 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sz002563</span>
+      <span class="nm">森马服饰</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>6.130</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">5.520</b></div>
+      <div><label>止盈价</label><b class="red">7.360</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz002563(002563) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 89.8（99.8 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sh600177</span>
+      <span class="nm">雅戈尔</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>8.780</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">7.900</b></div>
+      <div><label>止盈价</label><b class="red">10.540</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600177(600177) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 89.6（99.8 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sz002128</span>
+      <span class="nm">电投能源</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>27.900</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">26.220</b></div>
+      <div><label>止盈价</label><b class="red">30.420</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz002128(002128) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 1.2%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card buy">
+    <div class="ch"><span class="code">sh600570</span>
+      <span class="nm">恒生电子</span>
+      <span class="badge">共识 2/5</span>
+      <span class="tag">买入（行业共识≥2组·意向非成交）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>20.520</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">19.190</b></div>
+      <div><label>止盈价</label><b class="red">22.520</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600570(600570) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 2.19%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600467</span>
+      <span class="nm">好当家</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>2.770</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">2.493</b></div>
+      <div><label>止盈价</label><b class="red">3.186</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600467(600467) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 20.96%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600619</span>
+      <span class="nm">海立股份</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>13.700</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">12.330</b></div>
+      <div><label>止盈价</label><b class="red">15.755</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600619(600619) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 15.91%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600690</span>
+      <span class="nm">海尔智家</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>22.600</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">20.340</b></div>
+      <div><label>止盈价</label><b class="red">25.990</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600690(600690) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 14.78%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh688347</span>
+      <span class="nm">华虹宏力</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>184.970</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">166.473</b></div>
+      <div><label>止盈价</label><b class="red">212.716</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh688347(688347) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 8.98%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sz000062</span>
+      <span class="nm">深圳华强</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>21.970</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">19.773</b></div>
+      <div><label>止盈价</label><b class="red">25.265</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz000062(000062) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 8.07%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sz002226</span>
+      <span class="nm">江南化工</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>5.440</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">4.896</b></div>
+      <div><label>止盈价</label><b class="red">6.256</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz002226(002226) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 4.21%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600895</span>
+      <span class="nm">张江高科</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>26.650</b><small>裸价</small></div>
+      <div><label>止损触发线</label><b class="grn">23.985</b></div>
+      <div><label>止盈价</label><b class="red">30.648</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>1组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600895(600895) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：V9 机械信号 6/6 腿全命中；20日涨幅 1.41%；is_human=1组:False；票源=1组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh601018</span>
+      <span class="nm">宁波港</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>3.660</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">3.290</b></div>
+      <div><label>止盈价</label><b class="red">4.390</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh601018(601018) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 90.3（99.9 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600900</span>
+      <span class="nm">长江电力</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>30.680</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">27.610</b></div>
+      <div><label>止盈价</label><b class="red">36.820</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600900(600900) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 90.2（99.9 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sz001286</span>
+      <span class="nm">陕西能源</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>10.270</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">9.240</b></div>
+      <div><label>止盈价</label><b class="red">12.320</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz001286(001286) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 90.1（99.9 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh603345</span>
+      <span class="nm">安井食品</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>92.300</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">83.070</b></div>
+      <div><label>止盈价</label><b class="red">110.760</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh603345(603345) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 90.1（99.9 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600993</span>
+      <span class="nm">马应龙</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>25.970</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">23.370</b></div>
+      <div><label>止盈价</label><b class="red">31.160</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600993(600993) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 89.2（99.7 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600035</span>
+      <span class="nm">楚天高速</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>3.830</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">3.450</b></div>
+      <div><label>止盈价</label><b class="red">4.600</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600035(600035) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 88.9（99.7 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sz301109</span>
+      <span class="nm">军信股份</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>15.260</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">13.730</b></div>
+      <div><label>止盈价</label><b class="red">18.310</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>2组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz301109(301109) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：QF-1.2 当日打分 88.8（99.7 分位），不在本批持仓；若今日新买按此排序；is_human=2组:False；票源=2组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh603861</span>
+      <span class="nm">白云电器</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>10.060</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">8.880</b></div>
+      <div><label>止盈价</label><b class="red">11.830</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh603861(603861) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 -14.38%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh688819</span>
+      <span class="nm">天能股份</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>18.350</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">17.250</b></div>
+      <div><label>止盈价</label><b class="red">20.010</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh688819(688819) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 -7.37%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh601878</span>
+      <span class="nm">浙商证券</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>8.600</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">8.310</b></div>
+      <div><label>止盈价</label><b class="red">9.030</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh601878(601878) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 -2.16%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh600061</span>
+      <span class="nm">国投资本</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>6.030</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">5.800</b></div>
+      <div><label>止盈价</label><b class="red">6.370</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh600061(600061) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 -2.11%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh601881</span>
+      <span class="nm">中国银河</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>11.410</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">10.950</b></div>
+      <div><label>止盈价</label><b class="red">12.110</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh601881(601881) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 -0.78%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh601788</span>
+      <span class="nm">光大证券</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>13.350</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">12.860</b></div>
+      <div><label>止盈价</label><b class="red">14.080</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh601788(601788) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 -0.07%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sz002270</span>
+      <span class="nm">华明装备</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>18.910</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">17.430</b></div>
+      <div><label>止盈价</label><b class="red">21.130</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sz002270(002270) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 0.96%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+  <div class="card watch">
+    <div class="ch"><span class="code">sh601211</span>
+      <span class="nm">国泰海通</span>
+      <span class="badge">共识 1/5</span>
+      <span class="tag">观察（未达行业共识·非推荐）</span></div>
+    <div class="grid">
+      <div><label>触发价</label><b>16.290</b><small>qfq</small></div>
+      <div><label>止损触发线</label><b class="grn">15.500</b></div>
+      <div><label>止盈价</label><b class="red">17.470</b></div>
+      <div><label>实际执行价</label><b>取不到（意向非成交，无实际执行）</b><small>意向非成交，无实际执行</small></div>
+      <div><label>股数/金额</label><b> / </b></div>
+      <div><label>本笔最大亏</label><b> 元</b><small>占账户 </small></div>
+      <div><label>来源组</label><b>5组</b></div>
+    </div>
+    <div class="meta">除权预警：部分未核实：sh601211(601211) 窗口 2026-11-18~2026-12-05 内无命中记录，且收录该 code 的源已陈旧（dividend_factor_WB.csv约13交易日），取不到、不推断；未查到 ≠ 已核实（源表非实时公告流）；⚠️ 窗口 2026-11-18~2026-12-05 中 2026-11-09 之后段超出最远收录范围(2026-11-09)，取不到、未核实；部分源陈旧：dividend_factor_WB.csv(mtime=2026-10-30, 距 2026-11-18 约 13 交易日, 已陈旧)</div>
+    <div class="meta">依据：steady档当日信号名单（未在持仓）｜20日动量 2.32%｜本组排序键=反转升序；is_human=5组:False；票源=5组:new_picks</div>
+  </div>
+<div class="card watch"><div class="ch"><span class="tag">观察池（不买入）</span></div><ul><li><b>sh600467</b> 好当家 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sh600619</b> 海立股份 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sh600690</b> 海尔智家 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sh688347</b> 华虹宏力 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sz000062</b> 深圳华强 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sz002226</b> 江南化工 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sh600895</b> 张江高科 — 行业共识 1/5 组（1组 选中同票），未达行业共识，不买入）</li><li><b>sh601018</b> 宁波港 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sh600900</b> 长江电力 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sz001286</b> 陕西能源 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sh603345</b> 安井食品 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sh600993</b> 马应龙 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sh600035</b> 楚天高速 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sz301109</b> 军信股份 — 行业共识 1/5 组（2组 选中同票），未达行业共识，不买入）</li><li><b>sh603861</b> 白云电器 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sh688819</b> 天能股份 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sh601878</b> 浙商证券 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sh600061</b> 国投资本 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sh601881</b> 中国银河 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sh601788</b> 光大证券 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sz002270</b> 华明装备 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li><li><b>sh601211</b> 国泰海通 — 行业共识 1/5 组（5组 选中同票），未达行业共识，不买入）</li></ul></div>
+<div class="warn">
+⚠️ 本卡由 AI 基于五组公开信号汇总生成，<b>非投资建议</b>。是否录入条件单由用户自行决定。<br>
+共识规则（行业共识，2026-10-27 起）：≥2 组选中同行业 → 该行业个股进买入档（满档需≥3组同行业／半档=2组）；仅1组 → 观察池；0组 → 空卡。<br>
+阶段1 不使用净值加权（五组净值当前不可横比）。1组 的 C8 择时闸门为空壳，仓位判断归 2组 QF-1.2。<br>
+<!-- 2026-11-05 3组 只读发现（22:30 广播 §三）：CSV「有效期(天)」列恒 14＝1组 除权预警扫描窗口，非上报持有期，加表注防误读 -->
+注：CSV「有效期(天)」列＝<b>1组除权预警窗口，非上报持有期</b>（1组 除权预警扫描窗口 as_of 起 14 天+3 天缓冲，源 dividend_factor_WB.csv）；各组上报持有期以其上报件 horizon 字段为准（如 3组 horizon=20）。<br>
+<b>诚实护栏（三禁）：① 不写成交价（本卡所有价位均为信号参考/意向，非真实成交）；② 不只报喜（盈亏/未达共识均如实呈现）；③ 不包装成已建仓（全部为 AI 推导意向，未产生任何真实成交）。</b><br>
+<b>执行口径：</b>条件单到价仅推提醒，成交需用户手动确认；止损方向市价；跳空/跌停条件单可能不成交，由用户人工处理。<br>
+<b>成本口径边界：</b>实盘 25.2bp（5,000/席，万2.5含规费+最低5元下限）；单席资金口径待用户指示，单席&lt;4,000 时最低5元触发、须上调成本假设（25.2bp 是 5,000/席下的假设，低于此不成立）；模拟盘 30bp 假设不动。
+</div>
+<div class="warn">
+<b>逐票 data_gaps（止损有效性；仅透出上报件真实标注，不默认有止损）：</b><br>
+（本次上报件未标注逐票「无有效止损（14天到期未续）」，不默认任何票有/无有效止损）
+</div>
+</div>
+</details>
+
+<div class="riskfoot">⚠️ 风险提示：本卡由 AI 生成、非投资建议；所有信号均为意向，未产生任何真实成交；是否录入由用户自行决定。止盈止损触发线为机械参考位，跳空/跌停情形条件单可能不成交。</div>
+
+</div>
+<footer>页面构建时刻：2026-11-18 19:50（本地自动构建） ｜ 数据源：五组每日上报件与公共数据集，AI 生成仅供参考</footer>
+</body></html>
