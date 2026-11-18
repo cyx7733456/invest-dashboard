@@ -216,7 +216,7 @@ R = {g: latest_report(g) for g in GROUPS}  # 持仓明细用最新一份
 _SV_LABEL = {
     "armed":   "已挂（有效期内）",
     "expired": "无有效止损",
-    "none":    "本组无止损规则/未设",
+    "none":    "未设实际止损单",
     "exempt":  "固定腿豁免",
     "unknown": "止损有效性未上报",
 }
@@ -2839,7 +2839,7 @@ def ops_html():
              '<th title="按现价与止损触发线参考价计算；无参考价显示 —">距止损触发线</th>'
              '<th title="按止盈参考价与现价计算；无参考价显示 —">距止盈</th>'
              '<th title="自建仓以来的交易日数（建仓当日算 1）">持有天数</th>'
-             '<th title="来源组 · 共识票数；下方小字为打法摘要（优先当日上报件 strategy.summary 截 12 字，取不到由 basis 派生标「兜底」）">策略</th>'
+             '<th title="来源组 · 共识票数；下方小字为打法摘要（优先当日上报件 strategy.summary 截 12 字，取不到由 basis 派生标「兜底」）。口径声明：打法摘要仅为各组上报件 strategy.summary 原文引用，summary ≠ 实盘止损口径，不代表该组实际止损设置">策略</th>'
              '<th title="所属行业">方向</th>'
              '<th title="建仓理由原文（悬停看全文）">建仓逻辑</th>'
              '<th title="读上报件 stop_validity.map；缺失/未上报按未上报显示，不默认已挂">止损有效性</th></tr>')
