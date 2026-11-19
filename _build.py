@@ -896,6 +896,18 @@ def _usb_inline(s):
     s = html.escape(s, quote=False)
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
 
+def _usb_pct_cell(s):
+    """美股晨报表格单元格通式着色：把单元格内所有「数字%」逐个按 A 股口径着色
+    （正=红 --up / 负=绿 --dn / 零=灰 --dim），保留单元格内的中文与尾缀文字。
+    不依赖表头列名——点位(50,198.17)、时间(2026-11-18)、纯文字没有%符号，天然不着色。
+    先 escape 再一次 re.sub 完成，避免对已生成标签二次包裹。"""
+    esc = _usb_inline(s)  # 先 escape + 加粗，复用既有逻辑
+    def _color_one(mm):
+        num = float(mm.group(1))
+        col = "var(--up)" if num > 0 else ("var(--dn)" if num < 0 else "var(--dim)")
+        return f'<span style="color:{col}">{mm.group(0)}</span>'
+    return re.sub(r'([+-]?\d+(?:\.\d+)?)\s*%', _color_one, esc)
+
 def usbrief_md_html(md_text):
     """简易 md→HTML（标题/表格/引用/列表/段落/加粗），表格用站内表格样式。
     仅覆盖晨报实际用到的语法子集，不是通用 md 渲染器。"""
@@ -922,7 +934,7 @@ def usbrief_md_html(md_text):
                 rows.append((cells + [""] * len(hdr))[:len(hdr)])
                 i += 1
             thead = "".join(f"<th>{_usb_inline(c)}</th>" for c in hdr)
-            tbody = "".join("<tr>" + "".join(f"<td>{_usb_inline(c)}</td>" for c in r) + "</tr>" for r in rows)
+            tbody = "".join("<tr>" + "".join(f"<td>{_usb_pct_cell(c)}</td>" for c in r) + "</tr>" for r in rows)
             out.append(f"<table><tr>{thead}</tr>{tbody}</table>")
             continue
         if s.startswith(">"):
@@ -1160,6 +1172,12 @@ def pct(x, signed=True):
     s = f"{x*100:+.2f}%" if signed else f"{x*100:.2f}%"
     return f'<span class="{"up" if x > 0 else "dn" if x < 0 else "dim"}">{s}</span>'
 
+def pct_s(v, digits=2):
+    """已按百分数表示的数值着色：正=红(--up)/负=绿(--dn)/零=灰(--dim)。
+    入参 v 即显示的百分数本身（如 -6.59 表示 -6.59%），函数内不再乘 100。
+    注意：返回的是 HTML span，调用处若对结果再做 html.escape 会破坏标签，须一并去掉该 escape。"""
+    return f'<span class="{"up" if v > 0 else "dn" if v < 0 else "dim"}">{v:+.{digits}f}%</span>'
+
 def part_status_html(date):
     """参与状态条（HRS 建议5：三种「空」分开文案，不合并成「无信号」）：
     ✅已报new_picks ⚠今日无新增([]) ❌缺件未上报(字段省略)。"""
@@ -1207,7 +1225,7 @@ for g in GROUPS:
     lag = "" if m["last"] == TODAY else f'<span class="warn">数据截至 {m["last"]}</span>'
     nav_cards += f"""<div class="card"><span class="lab">{GD[g]} · 模拟净值</span>
 <b>{m['act']:.4f}</b><br>{pct(m['dchg'])} <span class="dim">当日</span><br>
-<span class="dim">累计 {m['cum']*100:+.1f}% ｜ 持仓 {m['n_hold']} 只</span><br>{lag}</div>"""
+<span class="dim">累计 {pct_s(m['cum']*100, 1)} ｜ 持仓 {m['n_hold']} 只</span><br>{lag}</div>"""
 
 entries = [
     ("实盘作战台", "ops/index.html", "持仓跟踪 · 今日动作 · 候选池 · 五组重点池"),
@@ -2695,7 +2713,7 @@ def ops_html():
         _hit8 = "触及" if _CAL_DD["dd_min"] <= -8 else "未触及"
         _hit10 = "触及" if _CAL_DD["dd_min"] <= -10 else "未触及"
         _dd_line = (f'<div class="sub">距 −6% / −8% / −10% 回撤观察线：'
-                    f'<b>最低回撤 {_CAL_DD["dd_min"]*100:+.2f}%</b>（组合净值 {_CAL_DD["nav"]:.4f} / 峰值 {_CAL_DD["peak"]:.4f}，'
+                    f'<b>最低回撤 {pct_s(_CAL_DD["dd_min"]*100)}</b>（组合净值 {_CAL_DD["nav"]:.4f} / 峰值 {_CAL_DD["peak"]:.4f}，'
                     f'{_CAL_DD["n_days"]} 日链乘、断点 {_CAL_DD["n_skip"]} 处：无样本日不插值；ETF 席按前复权收益计入，无 bar 日计 0；已调出票持仓期及其调出日收益均沉淀在链乘序列中）'
                     f'：−6% {_hit6} ｜ −8% {_hit8} ｜ −10% {_hit10}；只报是否触及，不做红黄橙评价</div>')
     else:
@@ -2710,14 +2728,14 @@ def ops_html():
         '（百分数单位原样累加），另加 ETF(510300) 前复权收益（有 bar 才计入）与已调出票调出日收益（按调出日计入并计覆盖）；'
         '分母固定 6 席；当日新进票与无行情的席计 0 且不计入覆盖数；'
         '覆盖率&lt;50%（即不足 3/6）不硬算、显示「取不到」">当日浮动%：<b>'
-        + (f'{_float_pct:+.2f}%' if _float_pct is not None else "取不到") + '</b>'
+        + (pct_s(_float_pct) if _float_pct is not None else "取不到") + '</b>'
         + f'（{_cov_n}/{_cap_n or 6} 覆盖；覆盖票等权和 ÷ 6 席，当日新进计 0）</div>'
         '<div class="sub" title="当前 6 席 ret_since_in 等权平均；不含已调出票的已实现损益，'
         '组合整体口径见下一行">持仓浮盈：<b>'
-        + (f'{_cum_all:+.2f}%' if _cum_all is not None else "取不到") + '</b>（当前 6 席等权，不含已实现）</div>'
+        + (pct_s(_cum_all) if _cum_all is not None else "取不到") + '</b>（当前 6 席等权，不含已实现）</div>'
         '<div class="sub" title="组合日收益（个股增量件 pct_chg + ETF 前复权 + 已调出票调出日收益，等权 6 席）逐日链乘 1+p；'
         '已调出票持仓期及其调出日收益均沉淀在链乘序列中">组合累计（含已实现，链乘）：<b>'
-        + (f'{(_CAL_DD["nav"]-1)*100:+.2f}%' if _CAL_DD["n_days"] else "取不到") + '</b></div>'
+        + (pct_s((_CAL_DD["nav"]-1)*100) if _CAL_DD["n_days"] else "取不到") + '</b></div>'
         '<div class="sub">风控口径：<b>纸面回放 · 止损触发线 −10% · 硬红线 −20%，尚未接入实盘</b>；组合累计以链乘口径为准</div>'
         + _dd_line)
     _status = (
@@ -2873,13 +2891,13 @@ def ops_html():
         if _a5 == "持有":
             _rt = _r.get("ret_since_in")
             try:
-                _cum_s = f'{float(_rt)*100:+.2f}%' if _rt not in (None, "") else "取不到"
+                _cum_s = pct_s(float(_rt)*100) if _rt not in (None, "") else "取不到"
             except (TypeError, ValueError):
                 _cum_s = "取不到"
-            _chg_plain = f'{_chg:+.2f}%' if _chg is not None else "取不到"
+            _chg_plain = pct_s(_chg) if _chg is not None else "取不到"
             _sl_s = _ops_dist(_lc, _r.get("stop_loss_anchor"), "sl")
-            _op_s = (f'<b>明日持有</b><div class="sub">今日 {html.escape(_chg_plain)} ｜ '
-                     f'累计 {html.escape(_cum_s)} ｜ 距止损触发线 {_sl_s}</div>')
+            _op_s = (f'<b>明日持有</b><div class="sub">今日 {_chg_plain} ｜ '
+                     f'累计 {_cum_s} ｜ 距止损触发线 {_sl_s}</div>')
         else:
             _op_s = f'<b>{html.escape(_ops_tmr(_a5))}</b>'
         # 软7 一手可行性：一手=price×100；名义 5,000 元推导、硬上限 6,000 元
@@ -3055,7 +3073,7 @@ def ops_html():
                     _xn = html.escape(str(_x.get("name") or ""))
                     _uv = _x.get("unreal_pct")
                     try:
-                        _uv_s = f'{float(_uv):+.2f}%' if _uv not in (None, "") else "取不到"
+                        _uv_s = pct_s(float(_uv)) if _uv not in (None, "") else "取不到"
                     except (TypeError, ValueError):
                         _uv_s = "取不到"
                     _dtr += (f'<tr><td><b>{_xc}</b> {_xn}</td><td>33.3%（1/3）</td>'
@@ -3416,7 +3434,7 @@ def _cal_month_html(y, m, build_day):
                 idxp = IDX_PCT.get(ds)
                 if idxp is not None:
                     inner += (f'<div class="dim calnote" title="沪深300 当日涨跌（index_hist.csv sh000300 收盘差分）">'
-                              f'300 {idxp*100:+.2f}%</div>')
+                              f'300 {pct_s(idxp*100)}</div>')
                 # CX 验收遗留2：组合当日浮动（与作战台同一派生口径）；取不到如实标注
                 _fl = _CAL_FLOAT.get(ds)
                 if _fl is not None and _fl["pct"] is not None:
@@ -3425,7 +3443,7 @@ def _cal_month_html(y, m, build_day):
                                 f'另加 ETF(510300) 前复权收益（有 bar 才计入）与已调出票调出日收益（按调出日计入并计覆盖），÷ {_CAL_CAP} 席；'
                                 f'当日新进票与 ETF 无 bar 日计 0、不计覆盖；覆盖 {_fl["cov"]}/{_CAL_CAP}；覆盖率<50% 不硬算。')
                     inner += (f'<div class="dim calnote" title="{html.escape(_flt_tip, quote=True)}">'
-                              f'组合 {_fl["pct"]:+.2f}%（{_fl["cov"]}/{_CAL_CAP}）</div>')
+                              f'组合 {pct_s(_fl["pct"])}（{_fl["cov"]}/{_CAL_CAP}）</div>')
                 else:
                     inner += ('<div class="dim calnote" title="当日无持仓快照，或 ETF 与当日新进票计 0 后无涨跌幅样本；'
                               '不拿个股收益冒充。">—（组合当日浮动取不到）</div>')
@@ -3450,7 +3468,7 @@ def _cal_month_html(y, m, build_day):
                     if _rv is not None:
                         inner += (f'<div class="dim calnote" title="5组 HRS 参照（ref_nav steady）当日差分 '
                                   f'{_rv*100:+.2f}%；act_nav 当日 0.000%（未随参照行情变动）。">'
-                                  f'参照 {_rv*100:+.2f}%（空仓踏空）</div>')
+                                  f'参照 {pct_s(_rv*100)}（空仓踏空）</div>')
                 _na = _CAL_ACT.get(ds)
                 if _na:
                     inner += (f'<div class="warn calnote" title="按每日状态变化与调出记录推导">'
@@ -3463,7 +3481,7 @@ def _cal_month_html(y, m, build_day):
             out += f'<td class="{cls}">{inner}</td>'
         out += "</tr>"
     _ms = _CAL_MONTH.get((y, m), {})
-    _cum_s = f'{_ms["cum"]*100:+.2f}%' if _ms.get("cum") is not None else "取不到"
+    _cum_s = pct_s(_ms["cum"]*100) if _ms.get("cum") is not None else "取不到"
     _up_s = f'{_ms["up"]} 天' if _ms.get("up") is not None else "取不到"
     out += ('<tr><td colspan="7" class="calnote" style="background:#171c26">'
             '<b>月末汇总</b>：'
@@ -3834,7 +3852,7 @@ if ETF:
 <tr><th>窗口末日</th><th>形态相关</th><th>幅度接近度</th><th>段内累计</th><th>后20日</th><th>后60日</th></tr>
 {sim_rows}
 </table>
-<div class="sub">汇总（Top8）：后 20 日中位 {m20*100:+.2f}%、胜率 {w20}/8；后 60 日中位 {m60*100:+.2f}%、胜率 {w60}/8。无条件基线（全部 {len(cands)} 个候选窗）：后 20 日中位 {b20*100:+.2f}%、后 60 日中位 {b60*100:+.2f}%。综合分 = 形态相关 × 幅度接近度；幅度接近度 = 1 − |段内累计−当前累计| /（|段内累计|+|当前累计|）。</div>
+<div class="sub">汇总（Top8）：后 20 日中位 {pct_s(m20*100)}、胜率 {w20}/8；后 60 日中位 {pct_s(m60*100)}、胜率 {w60}/8。无条件基线（全部 {len(cands)} 个候选窗）：后 20 日中位 {pct_s(b20*100)}、后 60 日中位 {pct_s(b60*100)}。综合分 = 形态相关 × 幅度接近度；幅度接近度 = 1 − |段内累计−当前累计| /（|段内累计|+|当前累计|）。</div>
 <div class="riskfoot">⚠️ <b>历史先验，非预测。</b>本次实测 Top8 形态相关全部 &lt; 0.45 —— 形态相关 &lt; 0.6 时仅为「幅度同族」而非「过程相似」，其后走势对当下的参考价值接近于零，请勿据此下注。本表仅陈述历史上形态/幅度相近的时段后来发生了什么。</div>"""
     else:
         sim_tbl = f'<div class="dim">取不到：候选窗口不足（扫描窗 {n_ret} 个收益日，需窗口+前瞻 ≥130 日），不编造。</div>'
