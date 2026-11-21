@@ -1192,6 +1192,86 @@ def part_status_html(date):
             bits.append(f'<span class="up">{GD[g]}✅</span>')
     return '<span class="status">' + " · ".join(bits) + "</span>"
 
+PORTFOLIO_JSON = os.path.join(DATA, "portfolio_track_WB.json")
+
+
+def _pt_load():
+    """读组合 JSON；不存在 / 解析失败 / 顶层或 meta、current、cap 结构不符 → None（调用方走灰态）。"""
+    if not os.path.exists(PORTFOLIO_JSON):
+        return None
+    try:
+        with open(PORTFOLIO_JSON, encoding="utf-8-sig") as _f:
+            _d = json.load(_f)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(_d, dict) or not isinstance(_d.get("meta"), dict) \
+            or not isinstance(_d.get("current"), list):
+        return None
+    _cap = _d["meta"].get("cap")
+    if isinstance(_cap, bool) or not isinstance(_cap, int) or _cap <= 0:
+        return None
+    return _d
+
+
+# ================= 执行卡（Top3 + ETF）：看板「当日精简主位」统一数据源 =================
+# 2026-11-08 用户举证修复：此前精简只落在企业微信执行卡，看板 _build.py 对 *_exec.csv
+# 零引用，live/ 仍平铺 32 只买入表、track/ 仍列 246 只，用户「看不过来」的问题根本没解决。
+# 现统一：看板默认视图 = 执行卡（固定腿 ETF 1 只 + 精选股票 ≤3 只）；全量一律折叠为备查。
+def exec_card_rows(date):
+    """读 daily_live_card_<date>_exec.csv；缺件/空件返回 None（调用方如实标取不到）。"""
+    _p = os.path.join(CARDS, f"daily_live_card_{date}_exec.csv")
+    if not os.path.exists(_p):
+        return None
+    try:
+        with open(_p, encoding="utf-8-sig", newline="") as _f:
+            _rows = list(csv.DictReader(_f))
+    except (OSError, csv.Error):
+        return None
+    return _rows or None
+
+
+# ===== 2026-11-21 CX 举证 P0/P1 整改：三处当日操作票统一到 exec.csv 单一数据源 =====
+def exec_action_rows(date):
+    """当日「操作票」唯一取数函数：exec.csv 中「买入」档的股票行（排除固定腿 ETF）。
+    三处共用：①首页操作 Top3 ②执行卡 ③作战台「另有N只」/候选池。
+    ⛔ 禁止第二套选取逻辑：卡面原序前 3、new_picks 按 sig_score 前 3 都不再充当操作依据。
+    缺件返回 None（调用方如实标取不到，不回落全量卡）。"""
+    _rows = exec_card_rows(date)
+    if _rows is None:
+        return None
+    return [r for r in _rows
+            if str(r.get("类型") or "").strip().lower() != "etf"
+            and str(r.get("动作") or "").startswith("买入")]
+
+
+def exec_queue_slots(date):
+    """排队/可执行判定：依据 portfolio_track 当前席位数与当日是否有清仓。
+    返回 (可执行名额 or None, 席位占用字符串 or None)。仅当 date == meta.as_of 才可判定；
+    历史日无席位快照 → (None, None)，渲染侧如实标取不到，不推断。"""
+    _d = _pt_load()
+    if not _d:
+        return None, None
+    _m = _d.get("meta") or {}
+    if str(_m.get("as_of") or "")[:10] != str(date)[:10]:
+        return None, None
+    try:
+        _cap = int(_m.get("cap"))
+    except (TypeError, ValueError):
+        return None, None
+    _cur = _d.get("current") or []
+    _ex = _d.get("exited") or []
+    _ncur = len(_cur)
+    _nclear = sum(1 for e in _ex if isinstance(e, dict)
+                  and str(e.get("exit_date") or "")[:10] == str(date)[:10])
+    _slots = max(0, _cap - _ncur) + _nclear
+    _seat = f"席位占用 {_ncur}/{_cap}"
+    if _cap - _ncur > 0:
+        _seat += f"｜空席 {_cap - _ncur}"
+    if _nclear:
+        _seat += f"｜当日清仓 {_nclear} 笔（腾出空席）"
+    return _slots, _seat
+
+
 # ================= R4+R3：首页 =================
 counts, crows, total, _ = compass(LATEST)
 buy_cnt = f'{counts["看空"]} 看空 / {counts["中性"]} 中性 / {counts["看多"]} 看多'
@@ -1200,6 +1280,28 @@ sum_line = (f"五组中 {counts['看空']} 组看空、{counts['中性']} 组中
             + (f"、{counts['未上报']} 组当日未上报" if counts["未上报"] else "")
             + "（客观计数陈述，非主观结论、非投资建议）")
 
+im_latest = industry_map(LATEST)
+
+# ===== 2026-11-21 CX P0-2/P1-2：首页唯一「当日操作 Top3」= 执行卡买入档（exec.csv 单一数据源） =====
+# ⛔ 禁止第二套选取逻辑：不再取卡面原序前 3（海尔/美的/荣泰同为家用电器、无操作参考性），
+#    不再用 new_picks 按 sig_score 前 3（曾混入仅 1 票共识的观察档伊利）。
+_op_acts = exec_action_rows(LATEST) or []
+OP_TOP3 = _op_acts[:3]
+op_top3_html = ""
+for i, r in enumerate(OP_TOP3):
+    _code = html.escape(str(r.get("代码") or ""))
+    ind = im_latest.get(str(r.get("代码") or ""))
+    ind_s = html.escape(ind) if ind else '<span class="dim">未上报</span>'
+    op_top3_html += f"""<div class="card"><span class="lab">{i+1}. {html.escape(r.get('名称') or '')}（{_code}）· {ind_s}</span>
+<b class="up">买入（行业共识≥2组）</b> <span class="gbadge">{html.escape(str(r.get('组') or ''))}</span>
+<span class="dim">共识 {html.escape(r.get('共识票数') or '—')}/5 组</span><br>
+<span class="dim">触发价 {html.escape(r.get('买入参考价/触发价') or '—')}（{html.escape(r.get('价格口径') or '—')}）｜ 止损触发线 {html.escape(r.get('止损价/锚') or '—')} ｜ 止盈 {html.escape(r.get('止盈价/锚') or '—')}</span><br>
+<span class="dim">有效期 {html.escape(r.get('有效期(天)') or '—')} 天 ｜ 意向非成交</span></div>"""
+if not op_top3_html:
+    op_top3_html = ('<div class="riskfoot">取不到：本日无执行卡买入档操作票'
+                    '（daily_live_card_&lt;日期&gt;_exec.csv 缺件或无股票行），不编造、不拿卡面原序冒充。</div>')
+
+# ===== 候选摘要：卡面原序买入档（保留展示，但明示非操作依据）=====
 top3 = []
 with open(f"{CARDS}/daily_live_card_{LATEST}.csv", newline="") as f:
     for r in csv.DictReader(f):
@@ -1207,7 +1309,6 @@ with open(f"{CARDS}/daily_live_card_{LATEST}.csv", newline="") as f:
             top3.append(r)
 TOP3 = top3[:3]
 
-im_latest = industry_map(LATEST)
 top3_html = ""
 for i, r in enumerate(TOP3):
     ind = im_latest.get(r["代码"])
@@ -1298,48 +1399,48 @@ body = f"""
   <div class="sub" style="margin-top:4px">历史件口径说明：历史件的口径文本为当时原样，未回改；个别旧卡因 60 字截断留下的半句属 PIT 证据，不补全、不伪造。2026-11-04 起渲染侧改为按句读点截断，仅作用于新生成的页面。</div>
 </div>
 <div style="margin-top:8px"><a class="bigbtn" href="live/{LATEST}.html#compass">查看详情（当日风向标区）</a></div>
-<h2>当日实盘推荐 Top3（{LATEST} 卡 · 行业共识 ≥2 组判据）</h2>
+<h2>当日实盘操作 Top3（{LATEST} 执行卡 · 唯一操作口径）</h2>
+<div class="sub" style="margin:4px 0 10px">口径（2026-11-21 CX P0-2 整改）：唯一操作票＝执行卡 <code>daily_live_card_{LATEST}_exec.csv</code> 买入档股票行（排除固定腿 ETF），按共识票数→当日打分、同行业限 1 只；触发价口径随卡面「价格口径」列。意向非成交，不构成买卖指令。</div>
 {part_status_html(LATEST)}
-<div class="sub" style="margin:4px 0 10px">Top3 选取规则：取当日卡 csv 中「买入（行业共识≥2 组）」档前 3 条，按卡面原序，未加工。触发价口径随卡面「价格口径」列（2026-10-29 起修复为裸价/实际价）。</div>
+<div class="grid g3">{op_top3_html}</div>
+<div class="sub" style="margin-top:6px">全部为 AI 意向、未成交；完整执行卡（含触发价/止损/止盈锚、排队判定）见 <a href="live/index.html">执行卡专区</a>。</div>
+<h2>候选摘要（当日买入档 {len(top3)} 只 · 非操作依据）</h2>
+<div class="sub" style="margin:4px 0 10px">下列为卡面原序买入档前 3 条，仅作<b>候选摘要</b>展示：按卡面原序、未做同行业去重，可能与上方操作 Top3 不同（例如三只同属「家用电器」），<b>非操作依据，不得据此下单</b>。当日操作一律以上方执行卡 Top3 为准。</div>
 <div class="grid g3">{top3_html}</div>
-<div class="sub" style="margin-top:6px">来源组徽章为卡面记录的单票来源组；共识票数含同行业他组候选。全部为 AI 意向、未成交；完整卡见 <a href="live/{LATEST}.html">实盘专区</a>。<br>⚠️ 此处 Top3 是<b>卡面原序摘要</b>，与当日操作用的 <a href="live/index.html">执行卡（固定腿 ETF + 精选 Top3）</a> 选取规则不同（执行卡按共识票数→当日打分、同行业限 1 只），<b>当日操作以执行卡为准</b>。</div>
 <h2>板块入口</h2>
 <div class="grid g6">{USB_CARD}{entry_html}</div>
 """
 open(f"{OUT}/index.html", "w").write(page("首页", body, depth=0))
 
-# ================= 执行卡（Top3 + ETF）：看板「当日精简主位」统一数据源 =================
-# 2026-11-08 用户举证修复：此前精简只落在企业微信执行卡，看板 _build.py 对 *_exec.csv
-# 零引用，live/ 仍平铺 32 只买入表、track/ 仍列 246 只，用户「看不过来」的问题根本没解决。
-# 现统一：看板默认视图 = 执行卡（固定腿 ETF 1 只 + 精选股票 ≤3 只）；全量一律折叠为备查。
-def exec_card_rows(date):
-    """读 daily_live_card_<date>_exec.csv；缺件/空件返回 None（调用方如实标取不到）。"""
-    _p = os.path.join(CARDS, f"daily_live_card_{date}_exec.csv")
-    if not os.path.exists(_p):
-        return None
-    try:
-        with open(_p, encoding="utf-8-sig", newline="") as _f:
-            _rows = list(csv.DictReader(_f))
-    except (OSError, csv.Error):
-        return None
-    return _rows or None
-
-
 def exec_card_html(date):
-    """执行卡固定 6 列表；无执行卡 → 灰态，不编造、不回落全量表充当精简视图。
+    """执行卡 7 列表（2026-11-21 P1-1 新增末列「排队/可执行」）；无执行卡 → 灰态，不编造。
     2026-11-17 P0：新增独立列「实际执行价」——当前全链路无真实成交价来源，一律如实标
     「取不到（意向非成交，无实际执行）」，禁止用触发价/止损触发线回填；与桌面渲染共用
-    exec_card_rows(date) 唯一取数函数，避免双实现字段漂移。"""
+    exec_card_rows(date) 唯一取数函数，避免双实现字段漂移。
+    排队/可执行列：依据 portfolio_track 当前席位数 + 当日是否清仓（exec_queue_slots），
+    仅 date == meta.as_of 可判；ETF 固定腿恒标「固定腿（不占排队）」。"""
     _rows = exec_card_rows(date)
     if _rows is None:
         return ('<div class="riskfoot">取不到：本日无精简执行卡'
                 '（daily_live_card_&lt;日期&gt;_exec.csv 未产出），不编造、不拿全量卡冒充；'
                 '下方为全量备查卡。</div>')
+    _slots, _seat = exec_queue_slots(date)
+    _eq_capable = set()
+    if _slots is not None:
+        # 前 _slots 只买入档可执行，其余排队（exec.csv 行序已按共识票数→打分排序）
+        _buy_seen = 0
+        for _r0 in _rows:
+            if str(_r0.get("类型") or "").strip().lower() == "etf":
+                continue
+            if _buy_seen < _slots:
+                _eq_capable.add(str(_r0.get("代码") or ""))
+            _buy_seen += 1
     _tr = ""
     for _r in _rows:
         _code = html.escape(_r.get("代码") or "")
         _name = html.escape(_r.get("名称") or "")
-        _typ = "ETF 固定腿" if (_r.get("类型") or "") == "etf" else "股票"
+        _is_etf = (_r.get("类型") or "").strip().lower() == "etf"
+        _typ = "ETF 固定腿" if _is_etf else "股票"
         _trig = html.escape(_r.get("买入参考价/触发价") or "—")
         _sl = html.escape(_r.get("止损价/锚") or "—")
         _tp = html.escape(_r.get("止盈价/锚") or "—")
@@ -1347,15 +1448,27 @@ def exec_card_html(date):
         _basis = html.escape(_r.get("价格口径") or "—")
         # 实际执行价：无成交来源一律如实标取不到；⛔ 禁止用触发价/止损触发线回填
         _exec_px = "取不到（意向非成交，无实际执行）"
+        # P1-1 排队/可执行
+        if _is_etf:
+            _queue = '<span class="dim">固定腿（不占排队）</span>'
+        elif _slots is None:
+            _queue = '<span class="dim">取不到（历史日无席位快照）</span>'
+        elif str(_r.get("代码") or "") in _eq_capable:
+            _queue = '<span style="color:var(--up)">可执行（有空席）</span>'
+        else:
+            _queue = '<span class="dim">排队（无空席，候选全部排队）</span>'
         _tr += (f'<tr><td><b>{_code}</b> {_name} <span class="tag">{_typ}</span></td>'
                 f'<td>{_trig} <span class="dim">({_basis})</span></td><td>{_sl}</td>'
-                f'<td>{_tp}</td><td>{_cons}</td><td>{_exec_px}</td></tr>')
+                f'<td>{_tp}</td><td>{_cons}</td><td>{_exec_px}</td><td>{_queue}</td></tr>')
+    _seat_note = (f'排队判定：{html.escape(_seat)}，可执行名额 {_slots} 席'
+                  if _slots is not None else '排队判定：取不到（本日非组合快照 as_of，历史日无席位快照）')
     return (f'<table><tr><th>标的</th><th>触发价（口径）</th><th>止损触发线</th>'
-            f'<th>止盈锚</th><th>共识票数</th><th>实际执行价</th></tr>{_tr}</table>'
+            f'<th>止盈锚</th><th>共识票数</th><th>实际执行价</th><th>排队/可执行</th></tr>{_tr}</table>'
             f'<div class="sub" style="margin-top:6px">共 {len(_rows)} 行 = 固定腿 ETF 1 只 + '
             f'精选股票 {len(_rows)-1} 只（同行业限 1 只，按共识票数→当日打分排序）；'
             f'意向非成交，不改动任何模拟盘持仓。实际执行价列当前无成交来源，一律标「取不到」，'
-            f'⛔ 不以触发价/止损触发线回填。全量卡约 30~40 行，已降级为下方折叠备查。</div>')
+            f'⛔ 不以触发价/止损触发线回填。{_seat_note}；候选≠建仓——无空席时候选全部排队。'
+            f'全量卡约 30~40 行，已降级为下方折叠备查。</div>')
 
 
 # ================= R1：live/ 入口页 =================
@@ -1878,27 +1991,6 @@ _rt_note = (f'现价快照 {RT_SNAP_S}' if RT_OK
 # 铁律：读不到 / 解析失败 / 结构不符 → 只显示一行灰态，不崩构建、不拿执行卡或全量跟踪表冒充、
 #       不写死假数据、不沿用旧快照。视图只逐票展示「自纳入日起收益」，绝不拼任何汇总收益/净值卡片
 #       （COMBO["ret"] 为全部历史卡逐条等权、无容量约束的纸面统计，口径不同，禁止搬来当本组合成绩）。
-PORTFOLIO_JSON = os.path.join(DATA, "portfolio_track_WB.json")
-
-
-def _pt_load():
-    """读组合 JSON；不存在 / 解析失败 / 顶层或 meta、current、cap 结构不符 → None（调用方走灰态）。"""
-    if not os.path.exists(PORTFOLIO_JSON):
-        return None
-    try:
-        with open(PORTFOLIO_JSON, encoding="utf-8-sig") as _f:
-            _d = json.load(_f)
-    except (OSError, ValueError, UnicodeDecodeError):
-        return None
-    if not isinstance(_d, dict) or not isinstance(_d.get("meta"), dict) \
-            or not isinstance(_d.get("current"), list):
-        return None
-    _cap = _d["meta"].get("cap")
-    if isinstance(_cap, bool) or not isinstance(_cap, int) or _cap <= 0:
-        return None
-    return _d
-
-
 def _pt_esc(v):
     """None/空 → None；否则 html.escape 后的字符串（展示层只转义，不改动数值口径）。"""
     if v is None or v == "":
@@ -2769,8 +2861,18 @@ def ops_html():
         _concl = f'今日清仓 {_st["sell"]} 席，其余持有。'
     else:
         _concl = "今日无建仓、无清仓，全部持有。"
+    # 2026-11-21 CX P0-1：今日结论下加席位占用 + 「候选≠建仓」文案
+    _n_seat = len(_cur)
+    _cap_s = str(_cap) if _cap is not None else "取不到"
+    _empty_s = str(_cap - _n_seat) if _cap is not None else "取不到"
+    _clear_n = int(_st.get("sell") or 0) if _st else 0
+    _seat_line = (f'席位占用 <b>{_n_seat}/{_cap_s}</b>'
+                  f'｜空席 {_empty_s}'
+                  + (f'｜当日清仓 {_clear_n} 笔（腾出空席）' if _clear_n else '')
+                  + '｜<b>候选≠建仓：无空席时候选全部排队</b>')
     _concl_html = ('<div class="card" style="margin-bottom:10px"><div class="sub" style="margin:0">'
-                   f'<b>今日结论</b>：{html.escape(_concl)}</div></div>')
+                   f'<b>今日结论</b>：{html.escape(_concl)}</div>'
+                   f'<div class="sub" style="margin:6px 0 0">{_seat_line}</div></div>')
 
     # ③ 今日动作（≤1 条；字段逐项，金额/股数/成交价标取不到）
     _act_rows, _act_n = "", 0
@@ -2823,23 +2925,22 @@ def ops_html():
     if _ex_today:
         _ex_line = ('另：今日清仓 '
                     f'{len(_ex_today)} 笔（{html.escape("、".join(_ex_today))}）计入下方「已调出」区，不重复计入今日动作。')
-    # 软6：执行卡与作战台统一 —— 未成交共识候选数 = 可见候选数 − 今日动作数
-    _ist_x, _irows_x, _, _ = _pt_intent(_ao) if _ao else ("missing", [], None, None)
-
-    def _cand_key(x):
-        try:
-            _s = float(x.get("sig_score") or 0)
-        except (TypeError, ValueError):
-            _s = 0.0
-        try:
-            _p = float(x.get("potential") or 0)
-        except (TypeError, ValueError):
-            _p = 0.0
-        return (-_s, -_p)
-
-    _cand_n = len(sorted(_irows_x, key=_cand_key)[:3]) if _ist_x == "ok" else 0
-    _cand_line = (f'另有 {max(0, _cand_n - _act_n)} '
-                  '只共识候选未成交，见候选池 / 执行卡（意向非成交）。')
+    # 2026-11-21 CX P0-1/真实 bug 修复：未成交共识候选数改为执行卡口径（exec.csv 买入档）
+    # ⛔ 不再取 daily_report_WB 的 new_picks（曾混入仅 1 票共识的观察档伊利，标签与数据源不符）
+    _exec_acts = exec_action_rows(_ao) if _ao else None
+    _cand_codes = []
+    if _exec_acts:
+        for _r in _exec_acts:
+            _cc = str(_r.get("代码") or "").strip()
+            if _cc:
+                _cand_codes.append(_cc)
+    _new_code_set = set(_new_codes)
+    _unfilled = [_cc for _cc in _cand_codes if _cc not in _new_code_set]
+    _cand_n = len(_unfilled)
+    _cand_line = (f'另有 {_cand_n} 只共识候选未成交'
+                  f'（执行卡买入档口径：买入档共 {len(_cand_codes)} 只，今日已建仓 '
+                  f'{len(_new_code_set & set(_cand_codes))} 只），'
+                  '候选≠建仓，见执行卡（意向非成交）。') if _cand_n else ''
     _act_tail = "｜".join(x for x in (_ex_line, _cand_line) if x)
     _act_html += f'<div class="sub" style="margin-top:4px">{_act_tail}</div>'
 
@@ -2947,59 +3048,39 @@ def ops_html():
               '今日涨跌覆盖 4/6（ETF 与新进标的无前收参考）；明日操作建议由快照日状态变化推导、指向下一交易日，仅供跟踪参考，不构成买卖指令。<br>'
               '明日操作建议分为明日建仓 / 明日加仓 / 明日持有 / 明日减仓 / 明日清仓五类；本快照：' + _snap_s + '。</div>')
 
-    # ⑤ 候选池：WB new_picks 前 3（按信号分/组内评分降序），容量 ≤20；「为什么没买」标派生
-    _ist, _irows, _ifn, _igate = _pt_intent(_ao) if _ao else ("missing", [], None, None)
-
-    def _irk(x):
-        try:
-            _s = float(x.get("sig_score") or 0)
-        except (TypeError, ValueError):
-            _s = 0.0
-        try:
-            _p = float(x.get("potential") or 0)
-        except (TypeError, ValueError):
-            _p = 0.0
-        return (-_s, -_p)
-
-    _itop = sorted(_irows, key=_irk)[:3]
+    # ⑤ 候选池（2026-11-21 CX P1-2 整改）：三处统一到 exec.csv 买入档单一数据源
+    #    ⛔ 移除 new_picks 按 sig_score 前 3 的第二套选取逻辑（曾混入仅 1 票共识的观察档伊利）。
+    #    展示「操作票中因满席排队、今日未成交」的票，与首页操作 Top3 / 执行卡 /「另有N只」同源。
+    _exec_pool = exec_action_rows(_ao) if _ao else None
+    _pool_rows = [r for r in (_exec_pool or [])
+                  if str(r.get("代码") or "").strip() not in _new_code_set][:3]
     _seats_full = bool(_cap_n and len(_cur) >= _cap_n)
-    if _ist != "ok" or not _itop:
+    _pool_industry = industry_map(_ao) if _ao else {}
+    if not _pool_rows:
         _pool_body = ('<div class="sub" style="margin-top:4px">'
-                      + ("当日无候选</div>" if _ist != "ok" else "候选取不到</div>"))
+                      + ("当日无候选（执行卡买入档为空或全部已建仓）</div>" if _exec_pool is not None
+                         else "候选取不到（本日无执行卡）</div>"))
     else:
         _ptr = ""
-        for _x in _itop:
-            _pc = html.escape(str(_x.get("code") or "取不到"))
-            _pn = html.escape(str(_x.get("name") or ""))
-            _pi = html.escape(str(_x.get("industry") or "行业未提供"))
-            _ps = html.escape(str(_x.get("sig_score") if _x.get("sig_score") not in (None, "") else "取不到"))
-            _why = ("席位已满（" + str(len(_cur)) + "/" + str(_cap) + "），暂无空位") if _seats_full \
-                else "共识不足 / 等待回调 / 风控未通过"
-            _itp, _isl, _il = _x.get("take_profit"), _x.get("stop_loss"), _x.get("last")
-
-            def _anc_ratio(_a):
-                try:
-                    return (float(_a) / float(_il) - 1) * 100.0
-                except (TypeError, ValueError, ZeroDivisionError):
-                    return None
-
-            _tp_r, _sl_r = _anc_ratio(_itp), _anc_ratio(_isl)
-            _anc_s = (f'止盈 {_tp_r:+.2f}% / 止损触发线 {_sl_r:+.2f}%'
-                      if _tp_r is not None and _sl_r is not None
-                      else _ops_na("取不到", "缺少参考价，无法计算"))
-            _anc_tip_raw = '止盈锚 / 止损触发线为相对最新价的比例，仅供参数参考'
-            _anc_tip = html.escape(_anc_tip_raw, quote=True)
-            # 原始 hfq 值的小数点用 HTML 实体编码：渲染数字不变，仅避免与旧「绝对价异常显示」字面串混淆
-            _anc_tip = _anc_tip.replace(".", "&#46;")
-            _anc = f'<span title="{_anc_tip}">{_anc_s}</span>'
-            _ptr += (f'<tr><td><b>{_pc}</b></td><td>{_pn}</td><td>{_pi}</td><td>{_ps}</td>'
-                     f'<td class="dim">{_why}</td><td>{_anc}</td></tr>')
-        _pool_body = ('<table><tr><th>代码</th><th>名称</th><th>行业</th><th>信号分</th>'
+        for _r in _pool_rows:
+            _pc = html.escape(str(_r.get("代码") or "取不到"))
+            _pn = html.escape(str(_r.get("名称") or ""))
+            _pi = html.escape(str(_pool_industry.get(str(_r.get("代码") or "")) or "未上报"))
+            _pcons = html.escape(str(_r.get("共识票数") or "取不到"))
+            _why = ("席位已满（" + str(len(_cur)) + "/" + str(_cap) + "），候选全部排队") if _seats_full \
+                else "等待空席 / 风控未通过"
+            _tp_anchor = html.escape(str(_r.get("止盈价/锚") or "—"))
+            _sl_anchor = html.escape(str(_r.get("止损价/锚") or "—"))
+            _basis = html.escape(str(_r.get("价格口径") or "—"))
+            _ptr += (f'<tr><td><b>{_pc}</b></td><td>{_pn}</td><td>{_pi}</td><td>{_pcons}</td>'
+                     f'<td class="dim">{_why}</td><td>止盈 {_tp_anchor} / 止损触发线 {_sl_anchor}'
+                     f' <span class="dim">({_basis})</span></td></tr>')
+        _pool_body = ('<table><tr><th>代码</th><th>名称</th><th>行业</th><th>共识票数</th>'
                       '<th>暂未买入原因</th>'
-                      '<th title="相对最新价的比例（%）">止盈锚 / 止损触发线（相对最新价）</th></tr>'
+                      '<th title="执行卡锚值，价格口径随卡面；非相对最新价比例">止盈锚 / 止损触发线（卡面口径）</th></tr>'
                       + _ptr + '</table>')
     _pool = ('<div class="sub" style="margin:12px 0 2px"><b>候选池</b>'
-             '（按信号分排序，展示前 3 只 · 供参考）</div>' + _pool_body)
+             '（执行卡买入档 · 因满席排队未成交 · 与首页操作票同源，供参考）</div>' + _pool_body)
 
     # ⑥ 已调出：最近 5 笔；含分位/分位差/触发路径（数据无标取不到）；换仓次数 ≤1
     _ex_recent = [e for e in _exited if isinstance(e, dict)][-5:]
