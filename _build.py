@@ -2720,6 +2720,26 @@ def _trigger_not_exec_html():
             f'<div class="sub">共 {len(_hits)} 只；数据源：TRACK 状态「已触止损」（bfq 收盘对比、盘中不计）。</div>'
             '</details>')
 
+def _etf_csv_bfq_close(day):
+    """ETF CSV 当日 bfq close —— 仅用于作战台「现价」展示兜底。
+
+    CX 2026-11-23 P2：portfolio_track_WB.json 的 510300 因回放时点 ETF 源表缺行，
+    11-16~11-20 last_close 连续 5 日为 null ⇒ 作战台现价显示「—」。ETF CSV 事后已补齐。
+    ⛔ 只读展示：不写回 JSON、不改 _lc 原值（距止损/止盈、一手闸、累计收益仍按原口径计算），
+    并在 tooltip 注明来源与「仅展示兜底」，避免把兜底值误当成回放快照的一部分。
+    """
+    if not day:
+        return None
+    try:
+        with open(f"{DATA}/kline_etf_510300_WB.csv", newline="", encoding="utf-8") as fh:
+            for r in csv.DictReader(fh, delimiter="|"):
+                if str(r.get("date") or "").strip() == day:
+                    return float(r["close"])
+    except (OSError, ValueError, KeyError, TypeError, csv.Error):
+        return None
+    return None
+
+
 def ops_html():
     _d = _pt_load()
     if _d is None:
@@ -2950,7 +2970,7 @@ def ops_html():
         _seats += [None] * (_cap_n - len(_seats))
     _head = ('<tr><th>席位</th><th>名称 / 代码</th><th>建仓日</th>'
              '<th title="纸面纳入价（复权口径）">成本</th>'
-             '<th title="最新价（复权口径）；无当日行情显示 —">现价</th>'
+             '<th title="最新价（复权口径）；无当日行情显示 —；ETF 回放快照缺行时展示 ETF CSV 值并在悬停注明来源">现价</th>'
              '<th title="当日涨跌幅；ETF 无当日行情、新进标的无前收参考时显示 —">今日涨跌</th>'
              '<th title="自建仓以来收益；红涨绿跌">累计收益</th>'
              '<th title="明日操作建议：按快照日状态变化推导，指向下一交易日；持有格附当日涨跌/累计收益/距止损触发线">明日操作建议</th>'
@@ -2971,8 +2991,16 @@ def ops_html():
         _c = str(_r.get("code") or "")
         _is_etf = bool(_etf) and _c == _etf
         _lc = _r.get("last_close")
-        _lc_s = ('<span title="价源当日无行情">—</span>'
-                 if _lc in (None, "") else html.escape(str(_lc)))
+        # ⚠ _lc 原值保持不变（计算口径不动）；兜底值只进 _lc_s 展示层（CX 2026-11-23 P2）
+        if _lc in (None, ""):
+            _lc_s = '<span title="价源当日无行情">—</span>'
+            if _is_etf:
+                _etf_fb = _etf_csv_bfq_close(_ao)
+                if _etf_fb is not None:
+                    _lc_s = (f'<span title="回放快照缺行、取 ETF CSV 当日 bfq close（{_ao}）；'
+                             f'仅展示兜底，未改 JSON 与计算口径">{html.escape(str(_etf_fb))}</span>')
+        else:
+            _lc_s = html.escape(str(_lc))
         _cost = (html.escape(str(_r.get("paper_cost"))) if _r.get("paper_cost") not in (None, "")
                  else '<span class="dim">取不到</span>')
         _id = (html.escape(str(_r.get("in_date"))) if _r.get("in_date") not in (None, "")
@@ -3044,7 +3072,7 @@ def ops_html():
     _snap_s = "、".join(_a5_names) if _a5_names else "取不到"
     _table = ('<div class="sub" style="margin:8px 0 2px"><b>持仓明细</b></div>'
               '<table>' + _head + _trs + '</table>'
-              '<div class="sub" style="margin-top:6px">口径：距止损触发线/距止盈按现价与参考价计算（复权口径）；无当日行情或参考价的显示「—」，不补零。今日涨跌与累计收益按红涨绿跌着色。ETF 无当日行情，如实显示「—」。<br>'
+              '<div class="sub" style="margin-top:6px">口径：距止损触发线/距止盈按现价与参考价计算（复权口径）；无当日行情或参考价的显示「—」，不补零。今日涨跌与累计收益按红涨绿跌着色。ETF 现价若因回放快照缺行为空、而 ETF CSV 当日有值，展示 CSV 值并在悬停注明来源（仅展示兜底，未改 JSON 与计算口径）；仍取不到则显示「—」。<br>'
               '今日涨跌覆盖 4/6（ETF 与新进标的无前收参考）；明日操作建议由快照日状态变化推导、指向下一交易日，仅供跟踪参考，不构成买卖指令。<br>'
               '明日操作建议分为明日建仓 / 明日加仓 / 明日持有 / 明日减仓 / 明日清仓五类；本快照：' + _snap_s + '。</div>')
 
